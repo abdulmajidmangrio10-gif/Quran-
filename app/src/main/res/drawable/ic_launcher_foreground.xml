@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:pivotX="54"
+        android:pivotY="54">
+        <!-- Rehal / Book Stand Base -->
+        <path
+            android:fillColor="#B88A2E"
+            android:pathData="M38,72 L54,64 L70,72 L66,76 L54,70 L42,76 Z" />
+        
+        <!-- Open Holy Quran Left Page Outer -->
+        <path
+            android:fillColor="#E6B74A"
+            android:pathData="M52,40 C43,36 32,36 28,38 C27,38.5 26,39.5 26,41 L26,63 C26,64.2 27.2,65.2 28.5,64.8 C33,63.2 43,63 52,67 Z" />
+            
+        <!-- Open Holy Quran Right Page Outer -->
+        <path
+            android:fillColor="#F3CA65"
+            android:pathData="M56,40 C65,36 76,36 80,38 C81,38.5 82,39.5 82,41 L82,63 C82,64.2 80.8,65.2 79.5,64.8 C75,63.2 65,63 56,67 Z" />
+
+        <!-- Book Spine Center Binding -->
+        <path
+            android:fillColor="#996D18"
+            android:pathData="M52.5,39 L55.5,39 L55.5,68 L52.5,68 Z" />
+
+        <!-- Left Page Inner Lines (Arabic script lines representation) -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M32,45 L48,43 L48,45 L32,47 Z
+                             M32,50 L48,48 L48,50 L32,52 Z
+                             M35,55 L48,53 L48,55 L35,57 Z" />
+
+        <!-- Right Page Inner Lines -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M60,43 L76,45 L76,47 L60,45 Z
+                             M60,48 L76,50 L76,52 L60,50 Z
+                             M60,53 L73,55 L73,57 L60,55 Z" />
+
+        <!-- Center Golden Play Triangle (Video Editor feature symbol) -->
+        <path
+            android:fillColor="#121316"
+            android:pathData="M52,49 L58,53 L52,57 Z" />
+
+        <!-- Islamic Star / Crescent Header Ornament -->
+        <path
+            android:fillColor="#FFDF78"
+            android:pathData="M54,28 L55.3,31.7 L59.1,31.7 L56,33.9 L57.2,37.6 L54,35.3 L50.8,37.6 L52,33.9 L48.9,31.7 L52.7,31.7 Z" />
+    </group>
+</vector>

@@ -1,0 +1,6 @@
+{
+  "name": "Quran Video Editor",
+  "description": "Professional mobile Quran video editor app with Quran ayah synchronization, timeline tracks, Arabic typography, Urdu translation, auto-captioning, audio, canvas, and video styling.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
