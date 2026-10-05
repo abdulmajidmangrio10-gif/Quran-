@@ -137,6 +137,18 @@ data class AudioClip(
     val speed: Float = 1.0f
 )
 
+data class VideoTimelineClip(
+    val id: String = UUID.randomUUID().toString(),
+    val uri: String? = null,
+    val name: String = "Video Clip",
+    val isBlank: Boolean = false,
+    val startTimeMs: Long = 0L,
+    val durationMs: Long = 10000L,
+    val volume: Float = 1.0f,
+    val isMuted: Boolean = false,
+    val speed: Float = 1.0f
+)
+
 data class ImageClip(
     val id: String = UUID.randomUUID().toString(),
     val uri: String,
@@ -177,6 +189,7 @@ data class EditingProject(
     val updatedAt: Long = System.currentTimeMillis(),
     val canvas: CanvasConfig = CanvasConfig(),
     val videoConfig: VideoClipConfig = VideoClipConfig(),
+    val videoClips: List<VideoTimelineClip> = emptyList(),
     val quranClips: List<QuranClip> = listOf(QuranClip()),
     val textClips: List<TextClip> = listOf(TextClip()),
     val audioClips: List<AudioClip> = listOf(AudioClip()),
