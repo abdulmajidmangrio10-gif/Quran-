@@ -39,12 +39,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
 import com.example.data.model.EditingProject
 import com.example.ui.theme.DarkBackground
 import com.example.ui.theme.DarkBorder
@@ -117,7 +119,7 @@ fun ProjectsScreen(
                         verticalArrangement = Arrangement.Center
                     ) {
                         Text(
-                            text = "No saved projects yet",
+                            text = "No Projects Yet",
                             color = TextWhite,
                             fontSize = 16.sp,
                             fontWeight = FontWeight.SemiBold

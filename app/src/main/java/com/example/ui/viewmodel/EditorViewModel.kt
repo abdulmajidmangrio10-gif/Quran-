@@ -2,6 +2,7 @@ package com.example.ui.viewmodel
 
 import android.app.Application
 import android.media.MediaMetadataRetriever
+import android.media.MediaPlayer
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -62,6 +63,7 @@ enum class BottomToolType {
     TIMELINE,
     QURAN,
     TEXT,
+    TEXT_TEMPLATES,
     ADJUST,
     FILTER,
     EFFECTS,
@@ -155,6 +157,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             ToolbarFeatureItem("timeline", "Timeline"),
             ToolbarFeatureItem("quran", "Quran"),
             ToolbarFeatureItem("text", "Text"),
+            ToolbarFeatureItem("templates", "Templates"),
             ToolbarFeatureItem("adjust", "Adjust"),
             ToolbarFeatureItem("filter", "Filter"),
             ToolbarFeatureItem("effects", "Effects"),
@@ -197,6 +200,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             ToolbarFeatureItem("timeline", "Timeline"),
             ToolbarFeatureItem("quran", "Quran"),
             ToolbarFeatureItem("text", "Text"),
+            ToolbarFeatureItem("templates", "Templates"),
             ToolbarFeatureItem("adjust", "Adjust"),
             ToolbarFeatureItem("filter", "Filter"),
             ToolbarFeatureItem("effects", "Effects"),
@@ -206,6 +210,33 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             ToolbarFeatureItem("sticker", "Sticker"),
             ToolbarFeatureItem("autocaption", "Auto Caption")
         )
+    }
+
+    fun applyTextTemplate(templateId: String) {
+        pushSnapshot()
+        val existingClips = _currentProject.value.textClips
+        val playhead = _currentPlayheadMs.value
+
+        val updated = if (existingClips.isNotEmpty()) {
+            val first = existingClips[0].copy(
+                templateId = templateId
+            )
+            listOf(first) + existingClips.drop(1)
+        } else {
+            listOf(
+                TextClip(
+                    id = java.util.UUID.randomUUID().toString(),
+                    text = "Original subtitle shown here",
+                    startTimeMs = playhead,
+                    durationMs = 8000L,
+                    templateId = templateId
+                )
+            )
+        }
+        _currentProject.value = _currentProject.value.copy(textClips = updated)
+        _selectedTrack.value = TrackType.TEXT
+        _selectedClipId.value = updated.firstOrNull()?.id
+        saveCurrentProject()
     }
 
     // Quran Editor State
@@ -316,6 +347,98 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun createBlankProject() {
+        val dateStr = SimpleDateFormat("MMM dd, yyyy", Locale.US).format(Date())
+        val defaultDurationMs = 15000L
+        val blankClip = com.example.data.model.VideoTimelineClip(
+            id = UUID.randomUUID().toString(),
+            uri = null,
+            name = "Blank Canvas",
+            isBlank = true,
+            startTimeMs = 0L,
+            durationMs = defaultDurationMs
+        )
+        val newProj = EditingProject(
+            id = UUID.randomUUID().toString(),
+            title = "Project ${projects.value.size + 1}",
+            videoUri = null,
+            thumbnailUri = null,
+            createdAt = dateStr,
+            durationMs = defaultDurationMs,
+            videoConfig = VideoClipConfig(
+                startTimeMs = 0L,
+                endTimeMs = defaultDurationMs
+            ),
+            videoClips = listOf(blankClip),
+            quranClips = emptyList(),
+            textClips = emptyList(),
+            audioClips = emptyList(),
+            imageClips = emptyList()
+        )
+        pushSnapshot()
+        _currentProject.value = newProj
+        _currentPlayheadMs.value = 0L
+        _selectedTrack.value = TrackType.VIDEO
+        _selectedClipId.value = blankClip.id
+        _currentScreen.value = AppScreen.MAIN_EDITOR
+
+        viewModelScope.launch {
+            repository.saveProject(newProj)
+        }
+    }
+
+    fun onMediaSelected(uri: Uri, title: String? = null) {
+        val context = getApplication<Application>()
+        val mime = context.contentResolver.getType(uri) ?: ""
+        if (mime.startsWith("image/")) {
+            val dateStr = SimpleDateFormat("MMM dd, yyyy", Locale.US).format(Date())
+            val durationMs = 10000L
+            val blankClip = com.example.data.model.VideoTimelineClip(
+                id = UUID.randomUUID().toString(),
+                uri = null,
+                name = "Canvas",
+                isBlank = true,
+                startTimeMs = 0L,
+                durationMs = durationMs
+            )
+            val imgClip = com.example.data.model.ImageClip(
+                id = UUID.randomUUID().toString(),
+                uri = uri.toString(),
+                startTimeMs = 0L,
+                durationMs = durationMs
+            )
+            val newProj = EditingProject(
+                id = UUID.randomUUID().toString(),
+                title = title ?: "Project ${projects.value.size + 1}",
+                videoUri = null,
+                thumbnailUri = uri.toString(),
+                createdAt = dateStr,
+                durationMs = durationMs,
+                videoConfig = VideoClipConfig(
+                    startTimeMs = 0L,
+                    endTimeMs = durationMs
+                ),
+                videoClips = listOf(blankClip),
+                imageClips = listOf(imgClip),
+                quranClips = emptyList(),
+                textClips = emptyList(),
+                audioClips = emptyList()
+            )
+            pushSnapshot()
+            _currentProject.value = newProj
+            _currentPlayheadMs.value = 0L
+            _selectedTrack.value = TrackType.IMAGE
+            _selectedClipId.value = imgClip.id
+            _currentScreen.value = AppScreen.MAIN_EDITOR
+
+            viewModelScope.launch {
+                repository.saveProject(newProj)
+            }
+        } else {
+            onVideoSelected(uri, title)
+        }
+    }
+
     // Video selection from gallery with real duration extraction
     fun onVideoSelected(uri: Uri, title: String? = null) {
         var videoDurationMs = 60000L
@@ -400,6 +523,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    private var audioPlayer: MediaPlayer? = null
+    private var currentlyPlayingAudioClipId: String? = null
+
     // Playback control
     fun togglePlayPause() {
         if (_isPlaying.value) {
@@ -416,11 +542,14 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             val total = _currentProject.value.durationMs
             while (_isPlaying.value) {
                 delay(100)
-                var next = _currentPlayheadMs.value + 100
+                val speed = _currentProject.value.videoConfig.speed.coerceIn(0.25f, 3.0f)
+                val step = (100 * speed).toLong()
+                var next = _currentPlayheadMs.value + step
                 if (next >= total) {
                     next = 0
                 }
                 _currentPlayheadMs.value = next
+                syncAudioPlayback(next)
             }
         }
     }
@@ -428,11 +557,70 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     private fun pausePlayback() {
         _isPlaying.value = false
         playbackJob?.cancel()
+        try {
+            audioPlayer?.pause()
+        } catch (_: Exception) {}
+    }
+
+    private fun syncAudioPlayback(currentMs: Long) {
+        val clips = _currentProject.value.audioClips
+        val activeAudio = clips.find { currentMs >= it.startTimeMs && currentMs < (it.startTimeMs + it.durationMs) }
+        val globalMuted = _isMuted.value
+
+        if (activeAudio == null || globalMuted || activeAudio.volume <= 0f) {
+            stopAudioPlayer()
+            return
+        }
+
+        if (currentlyPlayingAudioClipId != activeAudio.id) {
+            stopAudioPlayer()
+            startAudioClip(activeAudio, currentMs)
+        } else {
+            val vol = activeAudio.volume.coerceIn(0f, 1f)
+            try {
+                audioPlayer?.setVolume(vol, vol)
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun startAudioClip(clip: AudioClip, currentMs: Long) {
+        if (clip.uri == null) return
+        try {
+            currentlyPlayingAudioClipId = clip.id
+            val ctx = getApplication<Application>()
+            audioPlayer = MediaPlayer().apply {
+                setDataSource(ctx, Uri.parse(clip.uri))
+                setOnPreparedListener { mp ->
+                    val offset = (currentMs - clip.startTimeMs).coerceAtLeast(0L).toInt()
+                    mp.seekTo(offset)
+                    val vol = if (_isMuted.value) 0f else clip.volume.coerceIn(0f, 1f)
+                    mp.setVolume(vol, vol)
+                    if (_isPlaying.value) {
+                        mp.start()
+                    }
+                }
+                prepareAsync()
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun stopAudioPlayer() {
+        try {
+            audioPlayer?.stop()
+            audioPlayer?.release()
+        } catch (_: Exception) {}
+        audioPlayer = null
+        currentlyPlayingAudioClipId = null
     }
 
     fun seekTo(timeMs: Long) {
         val total = _currentProject.value.durationMs
         _currentPlayheadMs.value = timeMs.coerceIn(0L, total)
+        if (_isPlaying.value) {
+            syncAudioPlayback(_currentPlayheadMs.value)
+        } else {
+            stopAudioPlayer()
+        }
     }
 
     fun stepForward() {
@@ -445,6 +633,10 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
     fun toggleMute() {
         _isMuted.value = !_isMuted.value
+        val vol = if (_isMuted.value) 0f else 1f
+        try {
+            audioPlayer?.setVolume(vol, vol)
+        } catch (_: Exception) {}
     }
 
     fun toggleFullscreen() {
@@ -1005,29 +1197,40 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         val clipId = _selectedClipId.value ?: return
         when (_selectedTrack.value) {
             TrackType.VIDEO -> {
-                _currentProject.value = _currentProject.value.copy(
-                    videoClips = _currentProject.value.videoClips.filterNot { it.id == clipId }
-                )
+                val updated = _currentProject.value.videoClips.filterNot { it.id == clipId }
+                _currentProject.value = _currentProject.value.copy(videoClips = updated)
+                if (updated.isEmpty()) {
+                    _selectedTrack.value = TrackType.NONE
+                }
             }
             TrackType.QURAN -> {
-                _currentProject.value = _currentProject.value.copy(
-                    quranClips = _currentProject.value.quranClips.filterNot { it.id == clipId }
-                )
+                val updated = _currentProject.value.quranClips.filterNot { it.id == clipId }
+                _currentProject.value = _currentProject.value.copy(quranClips = updated)
+                if (updated.isEmpty()) {
+                    _selectedTrack.value = TrackType.VIDEO
+                }
             }
             TrackType.TEXT -> {
-                _currentProject.value = _currentProject.value.copy(
-                    textClips = _currentProject.value.textClips.filterNot { it.id == clipId }
-                )
+                val updated = _currentProject.value.textClips.filterNot { it.id == clipId }
+                _currentProject.value = _currentProject.value.copy(textClips = updated)
+                if (updated.isEmpty()) {
+                    _selectedTrack.value = TrackType.VIDEO
+                }
             }
             TrackType.AUDIO -> {
-                _currentProject.value = _currentProject.value.copy(
-                    audioClips = _currentProject.value.audioClips.filterNot { it.id == clipId }
-                )
+                val updated = _currentProject.value.audioClips.filterNot { it.id == clipId }
+                _currentProject.value = _currentProject.value.copy(audioClips = updated)
+                stopAudioPlayer()
+                if (updated.isEmpty()) {
+                    _selectedTrack.value = TrackType.VIDEO
+                }
             }
             TrackType.IMAGE -> {
-                _currentProject.value = _currentProject.value.copy(
-                    imageClips = _currentProject.value.imageClips.filterNot { it.id == clipId }
-                )
+                val updated = _currentProject.value.imageClips.filterNot { it.id == clipId }
+                _currentProject.value = _currentProject.value.copy(imageClips = updated)
+                if (updated.isEmpty()) {
+                    _selectedTrack.value = TrackType.VIDEO
+                }
             }
             else -> {}
         }
@@ -1039,6 +1242,18 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         pushSnapshot()
         val clipId = _selectedClipId.value ?: return
         when (_selectedTrack.value) {
+            TrackType.VIDEO -> {
+                val orig = _currentProject.value.videoClips.find { it.id == clipId } ?: return
+                val copy = orig.copy(
+                    id = UUID.randomUUID().toString(),
+                    name = "${orig.name} (Copy)",
+                    startTimeMs = (orig.startTimeMs + orig.durationMs).coerceAtMost(_currentProject.value.durationMs - 2000L)
+                )
+                _currentProject.value = _currentProject.value.copy(
+                    videoClips = _currentProject.value.videoClips + copy
+                )
+                _selectedClipId.value = copy.id
+            }
             TrackType.QURAN -> {
                 val orig = _currentProject.value.quranClips.find { it.id == clipId } ?: return
                 val copy = orig.copy(
@@ -1069,6 +1284,17 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                 )
                 _currentProject.value = _currentProject.value.copy(
                     audioClips = _currentProject.value.audioClips + copy
+                )
+                _selectedClipId.value = copy.id
+            }
+            TrackType.IMAGE -> {
+                val orig = _currentProject.value.imageClips.find { it.id == clipId } ?: return
+                val copy = orig.copy(
+                    id = UUID.randomUUID().toString(),
+                    startTimeMs = (orig.startTimeMs + orig.durationMs).coerceAtMost(_currentProject.value.durationMs - 2000L)
+                )
+                _currentProject.value = _currentProject.value.copy(
+                    imageClips = _currentProject.value.imageClips + copy
                 )
                 _selectedClipId.value = copy.id
             }
@@ -1317,46 +1543,41 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     // Auto Caption Generator
-    fun generateAutoCaptions() {
+    fun generateAutoCaptions(surahNumber: Int = 94) {
         _isAnalyzingCaption.value = true
-        _autoCaptionStatus.value = "Analyzing recitation audio waveform..."
+        val surah = com.example.data.QuranData.SURAH_LIST.find { it.number == surahNumber }
+            ?: com.example.data.QuranData.SURAH_LIST.first()
+        _autoCaptionStatus.value = "Analyzing audio cadence & waveform..."
         viewModelScope.launch {
-            delay(1000)
-            _autoCaptionStatus.value = "Detecting Arabic phonemes & Quranic cadence..."
-            delay(1000)
-            _autoCaptionStatus.value = "Matching Surah Al-Inshirah (Ayah 5 - 6)..."
-            delay(800)
+            delay(700)
+            _autoCaptionStatus.value = "Matching ${surah.nameEnglish} (${surah.nameArabic})..."
+            delay(700)
 
             pushSnapshot()
-            val autoGeneratedClips = listOf(
+            val totalMs = _currentProject.value.durationMs.coerceAtLeast(10000L)
+            val ayahs = surah.ayahs
+            val clipCount = ayahs.size.coerceAtMost(8)
+            val durationPerAyah = (totalMs / clipCount.coerceAtLeast(1)).coerceIn(3000L, 12000L)
+
+            val autoGeneratedClips = ayahs.take(clipCount).mapIndexed { idx, ayah ->
                 QuranClip(
-                    surahNumber = 94,
-                    surahName = "Al-Inshirah",
-                    ayahStart = 5,
-                    ayahEnd = 5,
-                    arabicText = "فَإِنَّ مَعَ ٱلْعُسْرِ يُسْرًا",
-                    urduTranslation = "پس یقیناً تنگی کے ساتھ آسانی ہے",
-                    startTimeMs = 2000L,
-                    durationMs = 7000L,
-                    animation = AnimationType.SLIDE_UP
-                ),
-                QuranClip(
-                    surahNumber = 94,
-                    surahName = "Al-Inshirah",
-                    ayahStart = 6,
-                    ayahEnd = 6,
-                    arabicText = "إِنَّ مَعَ الْعُسْرِ يُسْرًا",
-                    urduTranslation = "بے شک مشکل کے ساتھ آسانی ہے",
-                    startTimeMs = 9000L,
-                    durationMs = 9000L,
+                    id = UUID.randomUUID().toString(),
+                    surahNumber = surah.number,
+                    surahName = surah.nameEnglish,
+                    ayahStart = ayah.ayahNumber,
+                    ayahEnd = ayah.ayahNumber,
+                    arabicText = ayah.arabicText,
+                    urduTranslation = ayah.urduTranslation,
+                    startTimeMs = (idx * durationPerAyah).coerceAtMost(totalMs - 2000L),
+                    durationMs = durationPerAyah,
                     animation = AnimationType.SLIDE_UP
                 )
-            )
+            }
             _currentProject.value = _currentProject.value.copy(quranClips = autoGeneratedClips)
             _selectedTrack.value = TrackType.QURAN
             _selectedClipId.value = autoGeneratedClips.firstOrNull()?.id
             _isAnalyzingCaption.value = false
-            _autoCaptionStatus.value = "2 Quran Ayahs successfully matched & synchronized!"
+            _autoCaptionStatus.value = "${autoGeneratedClips.size} Ayahs of ${surah.nameEnglish} synchronized to timeline!"
             saveCurrentProject()
         }
     }
@@ -1424,6 +1645,139 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         _exportCompleted.value = false
         _exportProgress.value = 0f
         _activeModal.value = EditorModal.NONE
+    }
+
+    // Move and Scale Elements in Video Preview
+    fun moveQuranClipPosition(clipId: String, deltaNormX: Float, deltaNormY: Float) {
+        val list = _currentProject.value.quranClips.map { clip ->
+            if (clip.id == clipId) {
+                clip.copy(
+                    positionX = (clip.positionX + deltaNormX).coerceIn(0.05f, 0.95f),
+                    positionY = (clip.positionY + deltaNormY).coerceIn(0.05f, 0.95f)
+                )
+            } else clip
+        }
+        _currentProject.value = _currentProject.value.copy(quranClips = list)
+        saveCurrentProject()
+    }
+
+    fun scaleQuranClip(clipId: String, scaleFactor: Float) {
+        val list = _currentProject.value.quranClips.map { clip ->
+            if (clip.id == clipId) {
+                clip.copy(scale = (clip.scale * scaleFactor).coerceIn(0.5f, 3.0f))
+            } else clip
+        }
+        _currentProject.value = _currentProject.value.copy(quranClips = list)
+        saveCurrentProject()
+    }
+
+    fun moveTextClipPosition(clipId: String, deltaNormX: Float, deltaNormY: Float) {
+        val list = _currentProject.value.textClips.map { clip ->
+            if (clip.id == clipId) {
+                clip.copy(
+                    positionX = (clip.positionX + deltaNormX).coerceIn(0.05f, 0.95f),
+                    positionY = (clip.positionY + deltaNormY).coerceIn(0.05f, 0.95f)
+                )
+            } else clip
+        }
+        _currentProject.value = _currentProject.value.copy(textClips = list)
+        saveCurrentProject()
+    }
+
+    fun scaleTextClip(clipId: String, scaleFactor: Float) {
+        val list = _currentProject.value.textClips.map { clip ->
+            if (clip.id == clipId) {
+                clip.copy(scale = (clip.scale * scaleFactor).coerceIn(0.5f, 3.0f))
+            } else clip
+        }
+        _currentProject.value = _currentProject.value.copy(textClips = list)
+        saveCurrentProject()
+    }
+
+    fun moveStickerPosition(clipId: String, deltaNormX: Float, deltaNormY: Float) {
+        val list = _currentProject.value.stickerClips.map { clip ->
+            if (clip.id == clipId) {
+                clip.copy(
+                    positionX = (clip.positionX + deltaNormX).coerceIn(0.05f, 0.95f),
+                    positionY = (clip.positionY + deltaNormY).coerceIn(0.05f, 0.95f)
+                )
+            } else clip
+        }
+        _currentProject.value = _currentProject.value.copy(stickerClips = list)
+        saveCurrentProject()
+    }
+
+    fun moveImagePosition(clipId: String, deltaNormX: Float, deltaNormY: Float) {
+        val list = _currentProject.value.imageClips.map { clip ->
+            if (clip.id == clipId) {
+                clip.copy(
+                    positionX = (clip.positionX + deltaNormX).coerceIn(0.05f, 0.95f),
+                    positionY = (clip.positionY + deltaNormY).coerceIn(0.05f, 0.95f)
+                )
+            } else clip
+        }
+        _currentProject.value = _currentProject.value.copy(imageClips = list)
+        saveCurrentProject()
+    }
+
+    fun setAudioClipVolume(clipId: String, volume: Float) {
+        pushSnapshot()
+        val list = _currentProject.value.audioClips.map { clip ->
+            if (clip.id == clipId) clip.copy(volume = volume.coerceIn(0f, 1f)) else clip
+        }
+        _currentProject.value = _currentProject.value.copy(audioClips = list)
+        if (currentlyPlayingAudioClipId == clipId) {
+            val vol = if (_isMuted.value) 0f else volume.coerceIn(0f, 1f)
+            try {
+                audioPlayer?.setVolume(vol, vol)
+            } catch (_: Exception) {}
+        }
+        saveCurrentProject()
+    }
+
+    fun setVideoClipVolume(clipId: String, volume: Float) {
+        pushSnapshot()
+        val list = _currentProject.value.videoClips.map { clip ->
+            if (clip.id == clipId) clip.copy(volume = volume.coerceIn(0f, 1f)) else clip
+        }
+        _currentProject.value = _currentProject.value.copy(videoClips = list)
+        saveCurrentProject()
+    }
+
+    fun addAudioFromUri(uri: Uri, title: String) {
+        pushSnapshot()
+        var durationMs = 30000L
+        val context = getApplication<Application>()
+        val retriever = MediaMetadataRetriever()
+        try {
+            retriever.setDataSource(context, uri)
+            val dur = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
+            if (dur != null && dur > 1000L) {
+                durationMs = dur
+            }
+        } catch (_: Exception) {
+        } finally {
+            try { retriever.release() } catch (_: Exception) {}
+        }
+
+        val newAudio = AudioClip(
+            id = UUID.randomUUID().toString(),
+            title = title,
+            uri = uri.toString(),
+            startTimeMs = _currentPlayheadMs.value,
+            durationMs = durationMs
+        )
+        val list = _currentProject.value.audioClips + newAudio
+        val newTotal = maxOf(_currentProject.value.durationMs, _currentPlayheadMs.value + durationMs)
+        _currentProject.value = _currentProject.value.copy(audioClips = list, durationMs = newTotal)
+        _selectedTrack.value = TrackType.AUDIO
+        _selectedClipId.value = newAudio.id
+        saveCurrentProject()
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        stopAudioPlayer()
     }
 
     private fun saveCurrentProject() {

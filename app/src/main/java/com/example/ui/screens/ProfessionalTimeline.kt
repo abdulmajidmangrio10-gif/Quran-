@@ -241,27 +241,47 @@ fun ProfessionalTimelineView(
 
                     Spacer(modifier = Modifier.height(18.dp))
 
-                    // Track Labels Column
+                    // Track Labels Column (Only displays tracks that have clips)
                     Column(
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        TrackMiniLabel("VIDEO", Icons.Default.Movie, selectedTrack == TrackType.VIDEO) {
-                            viewModel.selectTrack(TrackType.VIDEO, project.videoClips.firstOrNull()?.id)
+                        if (project.videoClips.isNotEmpty()) {
+                            TrackMiniLabel("VIDEO", Icons.Default.Movie, selectedTrack == TrackType.VIDEO) {
+                                viewModel.selectTrack(TrackType.VIDEO, project.videoClips.firstOrNull()?.id)
+                            }
                         }
-                        TrackMiniLabel("QURAN", Icons.Default.MenuBook, selectedTrack == TrackType.QURAN) {
-                            viewModel.selectTrack(TrackType.QURAN, project.quranClips.firstOrNull()?.id)
+                        if (project.quranClips.isNotEmpty()) {
+                            TrackMiniLabel("QURAN", Icons.Filled.MenuBook, selectedTrack == TrackType.QURAN) {
+                                viewModel.selectTrack(TrackType.QURAN, project.quranClips.firstOrNull()?.id)
+                            }
                         }
-                        TrackMiniLabel("TEXT", Icons.Default.TextFields, selectedTrack == TrackType.TEXT) {
-                            viewModel.selectTrack(TrackType.TEXT, project.textClips.firstOrNull()?.id)
+                        if (project.textClips.isNotEmpty()) {
+                            TrackMiniLabel("TEXT", Icons.Default.TextFields, selectedTrack == TrackType.TEXT) {
+                                viewModel.selectTrack(TrackType.TEXT, project.textClips.firstOrNull()?.id)
+                            }
                         }
-                        TrackMiniLabel("AUDIO", Icons.Default.Audiotrack, selectedTrack == TrackType.AUDIO) {
-                            viewModel.selectTrack(TrackType.AUDIO, project.audioClips.firstOrNull()?.id)
+                        if (project.audioClips.isNotEmpty()) {
+                            TrackMiniLabel("AUDIO", Icons.Default.Audiotrack, selectedTrack == TrackType.AUDIO) {
+                                viewModel.selectTrack(TrackType.AUDIO, project.audioClips.firstOrNull()?.id)
+                            }
+                        }
+                        if (project.imageClips.isNotEmpty()) {
+                            TrackMiniLabel("IMAGE", Icons.Default.Image, selectedTrack == TrackType.IMAGE) {
+                                viewModel.selectTrack(TrackType.IMAGE, project.imageClips.firstOrNull()?.id)
+                            }
                         }
                     }
                 }
 
                 // 2. RIGHT SIDE: Horizontally Scrollable Timeline Viewport
+                val activeTrackCount = (if (project.videoClips.isNotEmpty()) 1 else 0) +
+                    (if (project.quranClips.isNotEmpty()) 1 else 0) +
+                    (if (project.textClips.isNotEmpty()) 1 else 0) +
+                    (if (project.audioClips.isNotEmpty()) 1 else 0) +
+                    (if (project.imageClips.isNotEmpty()) 1 else 0)
+                val dynamicTrackHeightDp = (activeTrackCount * 42).coerceAtLeast(42).dp
+
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -282,69 +302,93 @@ fun ProfessionalTimelineView(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(168.dp)
+                                .height(dynamicTrackHeightDp)
                                 .background(DarkBackground)
                         ) {
-                            // Tracks Column
+                            // Tracks Column (Only renders active tracks)
                             Column(
                                 modifier = Modifier.fillMaxSize(),
                                 verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                // 1. Video Track
-                                VideoTrackView(
-                                    clips = project.videoClips,
-                                    selectedTrack = selectedTrack,
-                                    selectedClipId = selectedClipId,
-                                    dpPerMs = dpPerMs,
-                                    onSelect = { viewModel.selectTrack(TrackType.VIDEO, it) },
-                                    onDragStart = { viewModel.onDragGestureStarted() },
-                                    onDragEnd = { viewModel.onDragGestureEnded() },
-                                    onTrimStart = { id, delta -> viewModel.trimClipStart(TrackType.VIDEO, id, delta) },
-                                    onTrimEnd = { id, delta -> viewModel.trimClipEnd(TrackType.VIDEO, id, delta) },
-                                    onMove = { id, delta -> viewModel.moveClip(TrackType.VIDEO, id, delta) }
-                                )
+                                // 1. Video Track (only shown if not empty)
+                                if (project.videoClips.isNotEmpty()) {
+                                    VideoTrackView(
+                                        clips = project.videoClips,
+                                        selectedTrack = selectedTrack,
+                                        selectedClipId = selectedClipId,
+                                        dpPerMs = dpPerMs,
+                                        onSelect = { viewModel.selectTrack(TrackType.VIDEO, it) },
+                                        onDragStart = { viewModel.onDragGestureStarted() },
+                                        onDragEnd = { viewModel.onDragGestureEnded() },
+                                        onTrimStart = { id, delta -> viewModel.trimClipStart(TrackType.VIDEO, id, delta) },
+                                        onTrimEnd = { id, delta -> viewModel.trimClipEnd(TrackType.VIDEO, id, delta) },
+                                        onMove = { id, delta -> viewModel.moveClip(TrackType.VIDEO, id, delta) }
+                                    )
+                                }
 
-                                // 2. Quran Track
-                                QuranTrackView(
-                                    clips = project.quranClips,
-                                    selectedTrack = selectedTrack,
-                                    selectedClipId = selectedClipId,
-                                    dpPerMs = dpPerMs,
-                                    onSelect = { viewModel.selectTrack(TrackType.QURAN, it) },
-                                    onDragStart = { viewModel.onDragGestureStarted() },
-                                    onDragEnd = { viewModel.onDragGestureEnded() },
-                                    onTrimStart = { id, delta -> viewModel.trimClipStart(TrackType.QURAN, id, delta) },
-                                    onTrimEnd = { id, delta -> viewModel.trimClipEnd(TrackType.QURAN, id, delta) },
-                                    onMove = { id, delta -> viewModel.moveClip(TrackType.QURAN, id, delta) }
-                                )
+                                // 2. Quran Track (only shown if not empty)
+                                if (project.quranClips.isNotEmpty()) {
+                                    QuranTrackView(
+                                        clips = project.quranClips,
+                                        selectedTrack = selectedTrack,
+                                        selectedClipId = selectedClipId,
+                                        dpPerMs = dpPerMs,
+                                        onSelect = { viewModel.selectTrack(TrackType.QURAN, it) },
+                                        onDragStart = { viewModel.onDragGestureStarted() },
+                                        onDragEnd = { viewModel.onDragGestureEnded() },
+                                        onTrimStart = { id, delta -> viewModel.trimClipStart(TrackType.QURAN, id, delta) },
+                                        onTrimEnd = { id, delta -> viewModel.trimClipEnd(TrackType.QURAN, id, delta) },
+                                        onMove = { id, delta -> viewModel.moveClip(TrackType.QURAN, id, delta) }
+                                    )
+                                }
 
-                                // 3. Text Track
-                                TextTrackView(
-                                    clips = project.textClips,
-                                    selectedTrack = selectedTrack,
-                                    selectedClipId = selectedClipId,
-                                    dpPerMs = dpPerMs,
-                                    onSelect = { viewModel.selectTrack(TrackType.TEXT, it) },
-                                    onDragStart = { viewModel.onDragGestureStarted() },
-                                    onDragEnd = { viewModel.onDragGestureEnded() },
-                                    onTrimStart = { id, delta -> viewModel.trimClipStart(TrackType.TEXT, id, delta) },
-                                    onTrimEnd = { id, delta -> viewModel.trimClipEnd(TrackType.TEXT, id, delta) },
-                                    onMove = { id, delta -> viewModel.moveClip(TrackType.TEXT, id, delta) }
-                                )
+                                // 3. Text Track (only shown if not empty)
+                                if (project.textClips.isNotEmpty()) {
+                                    TextTrackView(
+                                        clips = project.textClips,
+                                        selectedTrack = selectedTrack,
+                                        selectedClipId = selectedClipId,
+                                        dpPerMs = dpPerMs,
+                                        onSelect = { viewModel.selectTrack(TrackType.TEXT, it) },
+                                        onDragStart = { viewModel.onDragGestureStarted() },
+                                        onDragEnd = { viewModel.onDragGestureEnded() },
+                                        onTrimStart = { id, delta -> viewModel.trimClipStart(TrackType.TEXT, id, delta) },
+                                        onTrimEnd = { id, delta -> viewModel.trimClipEnd(TrackType.TEXT, id, delta) },
+                                        onMove = { id, delta -> viewModel.moveClip(TrackType.TEXT, id, delta) }
+                                    )
+                                }
 
-                                // 4. Audio Track
-                                AudioTrackView(
-                                    clips = project.audioClips,
-                                    selectedTrack = selectedTrack,
-                                    selectedClipId = selectedClipId,
-                                    dpPerMs = dpPerMs,
-                                    onSelect = { viewModel.selectTrack(TrackType.AUDIO, it) },
-                                    onDragStart = { viewModel.onDragGestureStarted() },
-                                    onDragEnd = { viewModel.onDragGestureEnded() },
-                                    onTrimStart = { id, delta -> viewModel.trimClipStart(TrackType.AUDIO, id, delta) },
-                                    onTrimEnd = { id, delta -> viewModel.trimClipEnd(TrackType.AUDIO, id, delta) },
-                                    onMove = { id, delta -> viewModel.moveClip(TrackType.AUDIO, id, delta) }
-                                )
+                                // 4. Audio Track (only shown if not empty)
+                                if (project.audioClips.isNotEmpty()) {
+                                    AudioTrackView(
+                                        clips = project.audioClips,
+                                        selectedTrack = selectedTrack,
+                                        selectedClipId = selectedClipId,
+                                        dpPerMs = dpPerMs,
+                                        onSelect = { viewModel.selectTrack(TrackType.AUDIO, it) },
+                                        onDragStart = { viewModel.onDragGestureStarted() },
+                                        onDragEnd = { viewModel.onDragGestureEnded() },
+                                        onTrimStart = { id, delta -> viewModel.trimClipStart(TrackType.AUDIO, id, delta) },
+                                        onTrimEnd = { id, delta -> viewModel.trimClipEnd(TrackType.AUDIO, id, delta) },
+                                        onMove = { id, delta -> viewModel.moveClip(TrackType.AUDIO, id, delta) }
+                                    )
+                                }
+
+                                // 5. Image Track (only shown if not empty)
+                                if (project.imageClips.isNotEmpty()) {
+                                    ImageTrackView(
+                                        clips = project.imageClips,
+                                        selectedTrack = selectedTrack,
+                                        selectedClipId = selectedClipId,
+                                        dpPerMs = dpPerMs,
+                                        onSelect = { viewModel.selectTrack(TrackType.IMAGE, it) },
+                                        onDragStart = { viewModel.onDragGestureStarted() },
+                                        onDragEnd = { viewModel.onDragGestureEnded() },
+                                        onTrimStart = { id, delta -> viewModel.trimClipStart(TrackType.IMAGE, id, delta) },
+                                        onTrimEnd = { id, delta -> viewModel.trimClipEnd(TrackType.IMAGE, id, delta) },
+                                        onMove = { id, delta -> viewModel.moveClip(TrackType.IMAGE, id, delta) }
+                                    )
+                                }
                             }
 
                             // 3. VERTICAL RED PLAYHEAD passing through all tracks
@@ -640,6 +684,52 @@ fun AudioTrackView(
                 isMuted = clip.volume <= 0f,
                 isSelected = isSelected,
                 accentColor = Color(0xFF26A69A),
+                dpPerMs = dpPerMs,
+                onSelect = { onSelect(clip.id) },
+                onDragStart = onDragStart,
+                onDragEnd = onDragEnd,
+                onTrimStart = { onTrimStart(clip.id, it) },
+                onTrimEnd = { onTrimEnd(clip.id, it) },
+                onMove = { onMove(clip.id, it) }
+            )
+        }
+    }
+}
+
+// =========================================================================
+// 5. IMAGE TRACK WITH MOVABLE AND TRIMMABLE CLIPS
+// =========================================================================
+@Composable
+fun ImageTrackView(
+    clips: List<ImageClip>,
+    selectedTrack: TrackType,
+    selectedClipId: String?,
+    dpPerMs: Float,
+    onSelect: (String) -> Unit,
+    onDragStart: () -> Unit,
+    onDragEnd: () -> Unit,
+    onTrimStart: (String, Long) -> Unit,
+    onTrimEnd: (String, Long) -> Unit,
+    onMove: (String, Long) -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(36.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(Color(0xFF231A2F))
+            .border(1.dp, Color(0xFF4A2F60), RoundedCornerShape(6.dp))
+    ) {
+        clips.forEach { clip ->
+            val isSelected = selectedTrack == TrackType.IMAGE && (selectedClipId == clip.id || selectedClipId == null)
+            TimelineClipItem(
+                id = clip.id,
+                title = "Image",
+                startTimeMs = clip.startTimeMs,
+                durationMs = clip.durationMs,
+                isMuted = false,
+                isSelected = isSelected,
+                accentColor = Color(0xFFAB47BC),
                 dpPerMs = dpPerMs,
                 onSelect = { onSelect(clip.id) },
                 onDragStart = onDragStart,

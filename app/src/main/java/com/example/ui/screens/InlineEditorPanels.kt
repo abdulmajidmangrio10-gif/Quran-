@@ -30,10 +30,13 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CropFree
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FormatPaint
 import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.Mic
@@ -45,6 +48,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.Button
@@ -921,6 +925,326 @@ fun InlineCustomizeToolbarPanel(
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+// 10. INLINE AUDIO & RECITATION PANEL
+@Composable
+fun InlineAudioPanel(
+    viewModel: EditorViewModel,
+    onClose: () -> Unit
+) {
+    val project by viewModel.currentProject.collectAsStateWithLifecycle()
+    val selectedClipId by viewModel.selectedClipId.collectAsStateWithLifecycle()
+    val audioClips = project.audioClips
+    val activeClip = audioClips.find { it.id == selectedClipId } ?: audioClips.firstOrNull()
+
+    val audioPicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.addAudioFromUri(uri, "Custom Audio")
+        }
+    }
+
+    val libraryAudios = listOf(
+        "Mishary Rashid - Surah Al-Inshirah" to 42000L,
+        "Abdul Basit - Surah Ar-Rahman" to 58000L,
+        "Saad Al-Ghamdi - Surah Al-Mulk" to 49000L,
+        "Peaceful Quran Ambience (Dua)" to 35000L
+    )
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(245.dp)
+            .padding(horizontal = 12.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .border(1.dp, QuranGold.copy(alpha = 0.5f), RoundedCornerShape(14.dp)),
+        colors = CardDefaults.cardColors(containerColor = DarkCard)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text("Audio & Recitation Tracks", color = QuranGold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = if (activeClip != null) "Selected: ${activeClip.title}" else "Add voiceover or background recitation",
+                        color = TextGray,
+                        fontSize = 10.sp,
+                        maxLines = 1
+                    )
+                }
+
+                IconButton(onClick = onClose, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = TextWhite, modifier = Modifier.size(18.dp))
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // Action Buttons: Import File & Record
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = { audioPicker.launch("audio/*") },
+                    colors = ButtonDefaults.buttonColors(containerColor = DarkCardLighter, contentColor = QuranGold),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.weight(1f).height(36.dp)
+                ) {
+                    Icon(Icons.Default.MusicNote, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Device Audio", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+
+                Button(
+                    onClick = {
+                        viewModel.addAudio("Voiceover Record")
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC2185B), contentColor = TextWhite),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.weight(1f).height(36.dp)
+                ) {
+                    Icon(Icons.Default.Mic, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Record Voice", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Active Clip Volume and Controls
+            if (activeClip != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(DarkCardLighter)
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        Icon(
+                            imageVector = if (activeClip.volume <= 0f) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                            contentDescription = "Volume",
+                            tint = if (activeClip.volume <= 0f) Color(0xFFEF5350) else QuranGold,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Volume: ${(activeClip.volume * 100).toInt()}%",
+                            color = TextWhite,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Slider(
+                            value = activeClip.volume,
+                            onValueChange = { viewModel.setAudioClipVolume(activeClip.id, it) },
+                            valueRange = 0f..1f,
+                            modifier = Modifier.weight(1f).padding(horizontal = 6.dp),
+                            colors = SliderDefaults.colors(
+                                thumbColor = QuranGold,
+                                activeTrackColor = QuranGold,
+                                inactiveTrackColor = DarkBorder
+                            )
+                        )
+                    }
+
+                    IconButton(
+                        onClick = { viewModel.deleteSelectedClip() },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(Icons.Default.Delete, contentDescription = "Delete Audio", tint = Color(0xFFEF5350), modifier = Modifier.size(16.dp))
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // Preset Islamic Recitations
+            Text("Quran Recitations & Ambience", color = TextGray, fontSize = 10.sp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                libraryAudios.forEach { (name, _) ->
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(DarkCardLighter)
+                            .clickable { viewModel.addAudio(name) }
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Audiotrack, contentDescription = null, tint = QuranGold, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(name, color = TextWhite, fontSize = 10.5.sp)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// 11. INLINE AUTO CAPTION PANEL
+@Composable
+fun InlineAutoCaptionPanel(
+    viewModel: EditorViewModel,
+    onClose: () -> Unit
+) {
+    val isAnalyzing by viewModel.isAnalyzingCaption.collectAsStateWithLifecycle()
+    val status by viewModel.autoCaptionStatus.collectAsStateWithLifecycle()
+    var selectedSurahNum by remember { androidx.compose.runtime.mutableIntStateOf(94) }
+    var showSurahDropdown by remember { androidx.compose.runtime.mutableStateOf(false) }
+
+    val surahs = com.example.data.QuranData.SURAH_LIST
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(245.dp)
+            .padding(horizontal = 12.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .border(1.dp, QuranGold.copy(alpha = 0.5f), RoundedCornerShape(14.dp)),
+        colors = CardDefaults.cardColors(containerColor = DarkCard)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.ClosedCaption, contentDescription = null, tint = QuranGold, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Auto Caption (قرآنی کیپشن سنکرونائزیشن)", color = QuranGold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
+
+                IconButton(onClick = onClose, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = TextWhite, modifier = Modifier.size(18.dp))
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Text(
+                text = "Select Surah recitation to align and generate synchronized Ayah timeline clips:",
+                color = TextGray,
+                fontSize = 10.5.sp
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // Surah Selector Dropdown
+            Box {
+                val currentSurah = surahs.find { it.number == selectedSurahNum } ?: surahs.first()
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(DarkCardLighter)
+                        .border(1.dp, DarkBorder, RoundedCornerShape(8.dp))
+                        .clickable { showSurahDropdown = true }
+                        .padding(horizontal = 12.dp, vertical = 7.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "${currentSurah.number}. ${currentSurah.nameEnglish} (${currentSurah.nameArabic})",
+                            color = TextWhite,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "${currentSurah.ayahs.size} Ayahs • ${currentSurah.revelationType}",
+                            color = QuranGold,
+                            fontSize = 10.sp
+                        )
+                    }
+                    Text("▼", color = TextGray, fontSize = 10.sp)
+                }
+
+                DropdownMenu(
+                    expanded = showSurahDropdown,
+                    onDismissRequest = { showSurahDropdown = false }
+                ) {
+                    surahs.forEach { s ->
+                        DropdownMenuItem(
+                            text = { Text("${s.number}. ${s.nameEnglish} - ${s.nameArabic}") },
+                            onClick = {
+                                selectedSurahNum = s.number
+                                showSurahDropdown = false
+                            }
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Status Badge
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color(0xFF1B241F))
+                    .border(1.dp, Color(0xFF2E7D32).copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+                    .padding(horizontal = 10.dp, vertical = 5.dp)
+            ) {
+                Text(
+                    text = status,
+                    color = Color(0xFFA5D6A7),
+                    fontSize = 10.5.sp,
+                    maxLines = 1
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Action Button
+            Button(
+                onClick = { viewModel.generateAutoCaptions(selectedSurahNum) },
+                enabled = !isAnalyzing,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = QuranGold,
+                    contentColor = TextDark,
+                    disabledContainerColor = DarkCardLighter
+                ),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp)
+            ) {
+                if (isAnalyzing) {
+                    CircularProgressIndicator(color = TextDark, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Aligning Recitation...", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                } else {
+                    Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Generate & Synchronize Captions", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }

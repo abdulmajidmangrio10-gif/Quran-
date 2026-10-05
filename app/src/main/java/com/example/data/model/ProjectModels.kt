@@ -40,9 +40,11 @@ enum class AnimationType(val displayName: String) {
     NONE("None"),
     FADE_IN("Fade In"),
     SLIDE_UP("Slide Up"),
+    SLIDE_DOWN("Slide Down"),
+    SLIDE_LEFT("Slide Left"),
+    SLIDE_RIGHT("Slide Right"),
     ZOOM_IN("Zoom In"),
     FADE_OUT("Fade Out"),
-    SLIDE_DOWN("Slide Down"),
     ZOOM_OUT("Zoom Out")
 }
 
@@ -104,25 +106,35 @@ data class QuranClip(
     val alignment: String = "Center",
     val positionX: Float = 0.5f,
     val positionY: Float = 0.5f,
+    val scale: Float = 1.0f,
+    val rotation: Float = 0f,
+    val opacity: Float = 1.0f,
     val animation: AnimationType = AnimationType.SLIDE_UP
 )
 
 data class TextClip(
     val id: String = UUID.randomUUID().toString(),
     val text: String = "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ\nشروع اللہ کے نام سے جو نہایت مہربان، رحم کرنے والا ہے",
-    val startTimeMs: Long = 18000L,
-    val durationMs: Long = 35000L,
+    val startTimeMs: Long = 0L,
+    val durationMs: Long = 10000L,
     val font: String = "Modern",
     val size: Float = 22f,
     val color: Long = 0xFFFFFFFF,
     val isBold: Boolean = true,
     val isItalic: Boolean = false,
     val hasOutline: Boolean = true,
+    val outlineColor: Long = 0xFF000000,
     val hasShadow: Boolean = true,
+    val shadowColor: Long = 0x99000000,
+    val backgroundColor: Long? = null,
+    val opacity: Float = 1.0f,
     val alignment: String = "Center",
     val positionX: Float = 0.5f,
     val positionY: Float = 0.45f,
-    val animation: AnimationType = AnimationType.SLIDE_UP
+    val scale: Float = 1.0f,
+    val rotation: Float = 0f,
+    val animation: AnimationType = AnimationType.SLIDE_UP,
+    val templateId: String? = null
 )
 
 data class AudioClip(

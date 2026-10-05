@@ -29,24 +29,35 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -78,14 +89,97 @@ fun HomeScreen(
 ) {
     val projects by viewModel.projects.collectAsStateWithLifecycle()
     val currentScreen by viewModel.currentScreen.collectAsStateWithLifecycle()
+    var showAddMediaDialog by remember { mutableStateOf(false) }
 
-    // Real Android media picker for videos (MP4, MOV, WebM)
+    // Real Android media picker for videos (MP4, MOV, WebM, M4V)
     val videoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         if (uri != null) {
-            viewModel.onVideoSelected(uri)
+            viewModel.onMediaSelected(uri)
         }
+    }
+
+    if (showAddMediaDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddMediaDialog = false },
+            containerColor = DarkCard,
+            title = {
+                Text(
+                    text = "New Project / نیا پراجیکٹ",
+                    color = QuranGold,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    // Blank Canvas Option
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(DarkCardLighter)
+                            .clickable {
+                                showAddMediaDialog = false
+                                viewModel.createBlankProject()
+                            }
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF263238)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.AspectRatio, contentDescription = null, tint = QuranGold, modifier = Modifier.size(20.dp))
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text("BLANK (خالی کینوس)", color = TextWhite, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text("Start with an empty canvas for Quran & text", color = TextGray, fontSize = 10.5.sp)
+                        }
+                    }
+
+                    // Video / Photo Option
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(DarkCardLighter)
+                            .clickable {
+                                showAddMediaDialog = false
+                                videoPickerLauncher.launch("video/*")
+                            }
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF1B5E20)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Movie, contentDescription = null, tint = Color(0xFFA5D6A7), modifier = Modifier.size(20.dp))
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text("VIDEO / PHOTO (فون گیلری)", color = TextWhite, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text("Import real MP4, MOV, WebM or photo", color = TextGray, fontSize = 10.5.sp)
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showAddMediaDialog = false }) {
+                    Text("Cancel", color = TextGray, fontSize = 12.sp)
+                }
+            }
+        )
     }
 
     Scaffold(
@@ -157,8 +251,7 @@ fun HomeScreen(
                     .clip(RoundedCornerShape(20.dp))
                     .border(1.5.dp, QuranGold.copy(alpha = 0.7f), RoundedCornerShape(20.dp))
                     .clickable {
-                        // Open real video picker
-                        videoPickerLauncher.launch("video/*")
+                        showAddMediaDialog = true
                     }
                     .testTag("add_video_button"),
                 colors = CardDefaults.cardColors(
@@ -243,10 +336,10 @@ fun HomeScreen(
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = "No saved projects yet",
+                            text = "No Projects Yet",
                             color = TextWhite,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
@@ -267,7 +360,8 @@ fun HomeScreen(
                     items(projects) { project ->
                         RecentProjectCard(
                             project = project,
-                            onClick = { viewModel.openProject(project) }
+                            onClick = { viewModel.openProject(project) },
+                            onDelete = { viewModel.deleteProject(project.id) }
                         )
                     }
                 }
@@ -282,8 +376,12 @@ fun HomeScreen(
 fun RecentProjectCard(
     project: EditingProject,
     onClick: () -> Unit,
+    onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val durSec = (project.durationMs / 1000).coerceAtLeast(0)
+    val durFormatted = String.format(java.util.Locale.US, "%02d:%02d", durSec / 60, durSec % 60)
+
     Column(
         modifier = modifier
             .width(180.dp)
@@ -308,20 +406,28 @@ fun RecentProjectCard(
                 .border(1.dp, DarkBorder, RoundedCornerShape(16.dp)),
             contentAlignment = Alignment.Center
         ) {
-            // Nature/River decorative scenic overlay representation
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.radialGradient(
-                            colors = listOf(
-                                Color(0x334CAF50),
-                                Color(0x111E88E5),
-                                Color.Transparent
+            if (!project.thumbnailUri.isNullOrEmpty()) {
+                AsyncImage(
+                    model = project.thumbnailUri,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.radialGradient(
+                                colors = listOf(
+                                    Color(0x334CAF50),
+                                    Color(0x111E88E5),
+                                    Color.Transparent
+                                )
                             )
                         )
-                    )
-            )
+                )
+            }
 
             // Play button circle in center
             Box(
@@ -349,7 +455,7 @@ fun RecentProjectCard(
                     .padding(horizontal = 6.dp, vertical = 2.dp)
             ) {
                 Text(
-                    text = "00:04",
+                    text = durFormatted,
                     color = TextWhite,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Medium
@@ -357,26 +463,43 @@ fun RecentProjectCard(
             }
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
-        // Title
-        Text(
-            text = project.title,
-            color = TextWhite,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        // Title and delete
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = project.title,
+                    color = TextWhite,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = project.createdAt,
+                    color = TextGray,
+                    fontSize = 11.sp
+                )
+            }
 
-        Spacer(modifier = Modifier.height(3.dp))
-
-        // Subtitle (Date)
-        Text(
-            text = project.createdAt,
-            color = TextGray,
-            fontSize = 12.sp
-        )
+            IconButton(
+                onClick = onDelete,
+                modifier = Modifier.size(26.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = "Delete Project",
+                    tint = TextGray,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
     }
 }
 
