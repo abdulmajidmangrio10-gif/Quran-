@@ -1545,8 +1545,8 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     // Auto Caption Generator
     fun generateAutoCaptions(surahNumber: Int = 94) {
         _isAnalyzingCaption.value = true
-        val surah = com.example.data.QuranData.SURAH_LIST.find { it.number == surahNumber }
-            ?: com.example.data.QuranData.SURAH_LIST.first()
+        val surah = com.example.data.quran.QuranData.ALL_SURAHS.find { it.number == surahNumber }
+            ?: com.example.data.quran.QuranData.ALL_SURAHS.first()
         _autoCaptionStatus.value = "Analyzing audio cadence & waveform..."
         viewModelScope.launch {
             delay(700)
@@ -1555,7 +1555,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
             pushSnapshot()
             val totalMs = _currentProject.value.durationMs.coerceAtLeast(10000L)
-            val ayahs = surah.ayahs
+            val ayahs = com.example.data.quran.QuranData.getAyahsForSurah(surah.number)
             val clipCount = ayahs.size.coerceAtMost(8)
             val durationPerAyah = (totalMs / clipCount.coerceAtLeast(1)).coerceIn(3000L, 12000L)
 

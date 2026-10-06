@@ -161,6 +161,9 @@ fun ProjectGridItem(
     onOpen: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val durSec = (project.durationMs / 1000).coerceAtLeast(0)
+    val durFormatted = String.format(java.util.Locale.US, "%02d:%02d", durSec / 60, durSec % 60)
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -188,6 +191,15 @@ fun ProjectGridItem(
                     ),
                 contentAlignment = Alignment.Center
             ) {
+                if (!project.thumbnailUri.isNullOrEmpty()) {
+                    AsyncImage(
+                        model = project.thumbnailUri,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+
                 Box(
                     modifier = Modifier
                         .size(36.dp)
@@ -213,7 +225,7 @@ fun ProjectGridItem(
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        text = "01:24",
+                        text = durFormatted,
                         color = TextWhite,
                         fontSize = 10.sp
                     )

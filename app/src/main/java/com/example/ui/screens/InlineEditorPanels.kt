@@ -1114,7 +1114,7 @@ fun InlineAutoCaptionPanel(
     var selectedSurahNum by remember { androidx.compose.runtime.mutableIntStateOf(94) }
     var showSurahDropdown by remember { androidx.compose.runtime.mutableStateOf(false) }
 
-    val surahs = com.example.data.QuranData.SURAH_LIST
+    val surahs: List<com.example.data.quran.SurahMeta> = com.example.data.quran.QuranData.ALL_SURAHS
 
     Card(
         modifier = Modifier
@@ -1178,7 +1178,7 @@ fun InlineAutoCaptionPanel(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "${currentSurah.ayahs.size} Ayahs • ${currentSurah.revelationType}",
+                            text = "${currentSurah.totalAyahs} Ayahs • ${currentSurah.revelation}",
                             color = QuranGold,
                             fontSize = 10.sp
                         )
