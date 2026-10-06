@@ -13,7 +13,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.ui.dialogs.AutoCaptionSheet
 import com.example.ui.dialogs.CanvasSheet
 import com.example.ui.dialogs.ExportDialog
 import com.example.ui.dialogs.SpeedSheet
@@ -103,10 +102,6 @@ fun QuranVideoEditorApp(
                 onDismiss = { viewModel.closeModal() }
             )
             EditorModal.SPEED -> SpeedSheet(
-                viewModel = viewModel,
-                onDismiss = { viewModel.closeModal() }
-            )
-            EditorModal.AUTO_CAPTION -> AutoCaptionSheet(
                 viewModel = viewModel,
                 onDismiss = { viewModel.closeModal() }
             )

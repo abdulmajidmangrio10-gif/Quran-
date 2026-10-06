@@ -6,9 +6,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,21 +19,18 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Animation
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.CropFree
-import androidx.compose.material.icons.filled.FormatColorFill
 import androidx.compose.material.icons.filled.FormatPaint
-import androidx.compose.material.icons.filled.FormatSize
-import androidx.compose.material.icons.filled.OpenWith
+import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.TextFields
@@ -45,13 +42,13 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -61,7 +58,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -69,7 +65,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.data.model.AnimationType
 import com.example.data.quran.AyahItem
 import com.example.data.quran.QuranData
 import com.example.data.quran.SurahMeta
@@ -91,7 +86,7 @@ fun QuranEditorScreen(
 ) {
     val searchQuery by viewModel.quranSearchQuery.collectAsStateWithLifecycle()
     val selectedSurah by viewModel.selectedSurah.collectAsStateWithLifecycle()
-    val selectedAyah by viewModel.selectedAyah.collectAsStateWithLifecycle()
+    val selectedAyahNumbers by viewModel.selectedAyahNumbers.collectAsStateWithLifecycle()
     val quranFont by viewModel.quranFont.collectAsStateWithLifecycle()
     val quranFontSize by viewModel.quranFontSize.collectAsStateWithLifecycle()
     val quranArabicColor by viewModel.quranArabicColor.collectAsStateWithLifecycle()
@@ -99,55 +94,74 @@ fun QuranEditorScreen(
     val hasOutline by viewModel.quranHasOutline.collectAsStateWithLifecycle()
     val hasShadow by viewModel.quranHasShadow.collectAsStateWithLifecycle()
 
+    var activeViewSurah by remember { mutableStateOf<SurahMeta?>(null) }
     var showFontMenu by remember { mutableStateOf(false) }
+
     val filteredSurahs = remember(searchQuery) {
         QuranData.searchSurahs(searchQuery)
     }
 
-    val availableAyahs = remember(selectedSurah) {
-        QuranData.getAyahsForSurah(selectedSurah.number)
+    val availableAyahs = remember(activeViewSurah) {
+        activeViewSurah?.let { QuranData.getAyahsForSurah(it.number) } ?: emptyList()
     }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = DarkBackground,
         bottomBar = {
-            // Cancel and Add to Video Buttons
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(DarkCard)
-                    .navigationBarsPadding()
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedButton(
-                    onClick = { viewModel.navigateTo(AppScreen.MAIN_EDITOR) },
+            if (activeViewSurah != null) {
+                // Bottom bar when viewing Ayahs of a selected Surah
+                Card(
                     modifier = Modifier
-                        .weight(1f)
-                        .height(46.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    border = ButtonDefaults.outlinedButtonBorder.copy(
-                        brush = androidx.compose.ui.graphics.SolidColor(DarkBorder)
-                    )
+                        .fillMaxWidth()
+                        .navigationBarsPadding(),
+                    colors = CardDefaults.cardColors(containerColor = DarkCard),
+                    shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+                    elevation = CardDefaults.cardElevation(8.dp)
                 ) {
-                    Text("Cancel", color = TextWhite, fontWeight = FontWeight.SemiBold)
-                }
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "${selectedAyahNumbers.size} Ayah(s) Selected",
+                                    color = QuranGold,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "ٹک مارک والی آیات ویڈیو میں شامل کریں",
+                                    color = TextGray,
+                                    fontSize = 10.sp
+                                )
+                            }
 
-                Button(
-                    onClick = { viewModel.addQuranToVideo() },
-                    modifier = Modifier
-                        .weight(1.4f)
-                        .height(46.dp)
-                        .testTag("add_to_video_button"),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = QuranGold,
-                        contentColor = TextDark
-                    )
-                ) {
-                    Text("Add to Video", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            Button(
+                                onClick = {
+                                    viewModel.addSelectedAyahsToVideo()
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = QuranGold,
+                                    contentColor = TextDark
+                                ),
+                                shape = RoundedCornerShape(20.dp),
+                                modifier = Modifier
+                                    .height(42.dp)
+                                    .testTag("add_selected_ayahs_button")
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "+ Add to Video",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -157,386 +171,458 @@ fun QuranEditorScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .statusBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .padding(horizontal = 14.dp, vertical = 6.dp)
         ) {
-            // Header: Back Arrow, Title "Quran"
+            // Header Top Bar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(48.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                IconButton(onClick = { viewModel.navigateTo(AppScreen.MAIN_EDITOR) }) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
-                        tint = TextWhite
+                if (activeViewSurah != null) {
+                    // Back to Surahs list button
+                    TextButton(
+                        onClick = { activeViewSurah = null },
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back to Surahs",
+                            tint = QuranGold,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "تمام سورتیں (All Surahs)",
+                            color = QuranGold,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                } else {
+                    IconButton(onClick = { viewModel.navigateTo(AppScreen.MAIN_EDITOR) }) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = TextWhite
+                        )
+                    }
+
+                    Text(
+                        text = "قرآن کریم (Holy Quran)",
+                        color = TextWhite,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
                     )
                 }
-                Text(
-                    text = "Quran",
-                    color = TextWhite,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f),
-                    textAlign = TextAlign.Center
-                )
-                // Basmala quick insert
+
+                // Quick Bismillah insertion
                 Text(
                     text = "﷽",
                     color = QuranGold,
                     fontSize = 20.sp,
                     modifier = Modifier
                         .clip(RoundedCornerShape(6.dp))
-                        .clickable { viewModel.addBasmalaToVideo() }
+                        .clickable {
+                            viewModel.addBasmalaToVideo()
+                            viewModel.navigateTo(AppScreen.MAIN_EDITOR)
+                        }
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 )
             }
 
-            // Search Bar: "Search Surah or Ayah"
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { viewModel.setQuranSearch(it) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                placeholder = { Text("Search Surah or Ayah", color = TextGray, fontSize = 14.sp) },
-                leadingIcon = {
-                    Icon(Icons.Default.Search, contentDescription = "Search", tint = TextGray)
-                },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { viewModel.setQuranSearch("") }) {
-                            Icon(Icons.Default.Close, contentDescription = "Clear", tint = TextGray)
+            if (activeViewSurah == null) {
+                // =========================================================================
+                // SCREEN 1: ALL 114 SURAHS LIST WITH SEARCH
+                // =========================================================================
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { viewModel.setQuranSearch(it) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    placeholder = { Text("Search Surah (1 to 114) / تلاش سورت", color = TextGray, fontSize = 13.sp) },
+                    leadingIcon = {
+                        Icon(Icons.Default.Search, contentDescription = "Search", tint = QuranGold, modifier = Modifier.size(20.dp))
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { viewModel.setQuranSearch("") }) {
+                                Icon(Icons.Default.Close, contentDescription = "Clear", tint = TextGray, modifier = Modifier.size(18.dp))
+                            }
                         }
-                    }
-                },
-                shape = RoundedCornerShape(12.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = DarkCard,
-                    unfocusedContainerColor = DarkCard,
-                    focusedBorderColor = QuranGold,
-                    unfocusedBorderColor = DarkBorder,
-                    focusedTextColor = TextWhite,
-                    unfocusedTextColor = TextWhite
-                ),
-                singleLine = true
-            )
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = DarkCard,
+                        unfocusedContainerColor = DarkCard,
+                        focusedBorderColor = QuranGold,
+                        unfocusedBorderColor = DarkBorder,
+                        focusedTextColor = TextWhite,
+                        unfocusedTextColor = TextWhite
+                    ),
+                    singleLine = true
+                )
 
-            // Middle section: Left Column (Surahs List) & Right Area (Selected Ayah Calligraphy Card)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .padding(vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                // Surahs List (All 114 Surahs available)
+                Text(
+                    text = "Click any Surah to select its Ayahs with checkmark (ٹک مارک):",
+                    color = TextGray,
+                    fontSize = 11.5.sp,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+
                 LazyColumn(
                     modifier = Modifier
-                        .width(135.dp)
-                        .fillMaxHeight()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(DarkCard)
-                        .border(1.dp, DarkBorder, RoundedCornerShape(12.dp))
-                        .padding(vertical = 6.dp)
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(12.dp)),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(bottom = 16.dp)
                 ) {
                     items(filteredSurahs) { surah ->
-                        val isSelected = surah.number == selectedSurah.number
-                        Row(
+                        Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { viewModel.selectSurah(surah) }
-                                .background(if (isSelected) DarkCardLighter else Color.Transparent)
-                                .padding(horizontal = 8.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .clip(RoundedCornerShape(12.dp))
+                                .border(1.dp, DarkBorder, RoundedCornerShape(12.dp))
+                                .clickable {
+                                    viewModel.selectSurah(surah)
+                                    activeViewSurah = surah
+                                }
+                                .testTag("surah_item_${surah.number}"),
+                            colors = CardDefaults.cardColors(containerColor = DarkCard),
+                            shape = RoundedCornerShape(12.dp)
                         ) {
-                            Text(
-                                text = "${surah.number}. ${surah.nameEnglish}",
-                                color = if (isSelected) QuranGold else TextWhite,
-                                fontSize = 11.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                    }
-                }
-
-                // Right Area: Calligraphy Preview Card & Ayah Picker
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    // Selected Ayah Calligraphy Card
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                            .clip(RoundedCornerShape(12.dp))
-                            .border(1.dp, QuranGold.copy(alpha = 0.4f), RoundedCornerShape(12.dp)),
-                        colors = CardDefaults.cardColors(containerColor = DarkCard),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(12.dp)
-                                .verticalScroll(rememberScrollState()),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            // Arabic Quran Scripture
-                            Text(
-                                text = selectedAyah.arabicText,
-                                color = Color(quranArabicColor),
-                                fontSize = quranFontSize.sp,
-                                fontWeight = FontWeight.Bold,
-                                textAlign = TextAlign.Center,
-                                lineHeight = (quranFontSize * 1.6f).sp,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            // Urdu Translation
-                            Text(
-                                text = selectedAyah.urduTranslation,
-                                color = Color(quranTranslationColor),
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Medium,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-                    }
-
-                    // Ayah selector strip
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(65.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(DarkCard)
-                            .border(1.dp, DarkBorder, RoundedCornerShape(8.dp))
-                            .padding(4.dp)
-                    ) {
-                        items(availableAyahs) { ayah ->
-                            val isSelected = ayah.ayahNumber == selectedAyah.ayahNumber
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { viewModel.selectAyah(ayah) }
-                                    .background(if (isSelected) QuranGold.copy(alpha = 0.15f) else Color.Transparent)
-                                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "Ayah ${ayah.ayahNumber}",
-                                    color = if (isSelected) QuranGold else TextWhite,
-                                    fontSize = 11.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    // Surah Number Badge
+                                    Box(
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .clip(CircleShape)
+                                            .background(DarkCardLighter)
+                                            .border(1.dp, QuranGold.copy(alpha = 0.5f), CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "${surah.number}",
+                                            color = QuranGold,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.width(12.dp))
+
+                                    Column {
+                                        Text(
+                                            text = surah.nameEnglish,
+                                            color = TextWhite,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = "${surah.meaning} • ${surah.totalAyahs} Ayahs • ${surah.revelation}",
+                                            color = TextGray,
+                                            fontSize = 10.5.sp
+                                        )
+                                    }
+                                }
+
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = surah.nameArabic,
+                                        color = QuranGold,
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
+                                        contentDescription = null,
+                                        tint = TextGray,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                // =========================================================================
+                // SCREEN 2: ALL AYAHS OF THE SELECTED SURAH WITH TICK MARKS (ٹک مارک)
+                // =========================================================================
+                val surah = activeViewSurah!!
+
+                // Surah Banner Info
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp),
+                    colors = CardDefaults.cardColors(containerColor = DarkCardLighter),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "سُورَةُ ${surah.nameArabic} - ${surah.nameEnglish}",
+                            color = QuranGold,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Surah ${surah.number} • ${surah.totalAyahs} آیات • ${surah.revelation}",
+                            color = TextGray,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+
+                // Styling row (Font, Size, Color, Outline, Shadow)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Font Menu
+                    Box {
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(DarkCard)
+                                .clickable { showFontMenu = true }
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(quranFont, color = TextWhite, fontSize = 11.sp)
+                            Text(" ▼", color = TextGray, fontSize = 8.sp)
+                        }
+
+                        DropdownMenu(expanded = showFontMenu, onDismissRequest = { showFontMenu = false }) {
+                            listOf("Al-Fatihah", "Naskh", "Amiri", "Modern", "Kufic").forEach { f ->
+                                DropdownMenuItem(
+                                    text = { Text(f) },
+                                    onClick = {
+                                        viewModel.setQuranFont(f)
+                                        showFontMenu = false
+                                    }
                                 )
-                                Text(
-                                    text = ayah.arabicText.take(15) + "...",
-                                    color = TextGray,
-                                    fontSize = 10.sp
+                            }
+                        }
+                    }
+
+                    // Size Controls
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { viewModel.setQuranFontSize(quranFontSize - 2f) }, modifier = Modifier.size(24.dp)) {
+                            Icon(Icons.Default.Remove, contentDescription = null, tint = TextWhite, modifier = Modifier.size(14.dp))
+                        }
+                        Text("${quranFontSize.toInt()}sp", color = QuranGold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        IconButton(onClick = { viewModel.setQuranFontSize(quranFontSize + 2f) }, modifier = Modifier.size(24.dp)) {
+                            Icon(Icons.Default.Add, contentDescription = null, tint = TextWhite, modifier = Modifier.size(14.dp))
+                        }
+                    }
+
+                    // Color & Outline & Shadow toggles
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .size(22.dp)
+                                .clip(CircleShape)
+                                .background(Color(quranArabicColor))
+                                .border(1.dp, TextGray, CircleShape)
+                                .clickable {
+                                    viewModel.setQuranArabicColor(
+                                        if (quranArabicColor == 0xFFFFFFFF) 0xFFE6B74A else 0xFFFFFFFF
+                                    )
+                                }
+                        )
+
+                        Icon(
+                            imageVector = Icons.Default.CropFree,
+                            contentDescription = "Outline",
+                            tint = if (hasOutline) QuranGold else TextGray,
+                            modifier = Modifier
+                                .size(20.dp)
+                                .clickable { viewModel.toggleQuranOutline() }
+                        )
+
+                        Icon(
+                            imageVector = Icons.Default.FormatPaint,
+                            contentDescription = "Shadow",
+                            tint = if (hasShadow) QuranGold else TextGray,
+                            modifier = Modifier
+                                .size(20.dp)
+                                .clickable { viewModel.toggleQuranShadow() }
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // ALL AYAHS LIST WITH PROMINENT CHECKMARK (ٹک مارک)
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(bottom = 12.dp)
+                ) {
+                    items(availableAyahs) { ayah ->
+                        val isChecked = selectedAyahNumbers.contains(ayah.ayahNumber)
+
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .border(
+                                    width = if (isChecked) 1.5.dp else 1.dp,
+                                    color = if (isChecked) QuranGold else DarkBorder,
+                                    shape = RoundedCornerShape(12.dp)
                                 )
+                                .clickable {
+                                    viewModel.toggleAyahSelection(ayah)
+                                }
+                                .testTag("ayah_card_${ayah.ayahNumber}"),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isChecked) DarkCardLighter else DarkCard
+                            ),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp)
+                            ) {
+                                // Top Row: Ayah Number Badge + TICK MARK (ٹک مارک)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(if (isChecked) QuranGold else DarkCardLighter)
+                                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                        ) {
+                                            Text(
+                                                text = "آیت نمبر ${ayah.ayahNumber}",
+                                                color = if (isChecked) TextDark else QuranGold,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.width(8.dp))
+
+                                        Text(
+                                            text = "Ayah ${ayah.ayahNumber}",
+                                            color = TextGray,
+                                            fontSize = 11.sp
+                                        )
+                                    }
+
+                                    // PROMINENT CHECKMARK (ٹک مارک) ICON
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.clickable {
+                                            viewModel.toggleAyahSelection(ayah)
+                                        }
+                                    ) {
+                                        Text(
+                                            text = if (isChecked) "Selected (منتخب)" else "Select",
+                                            color = if (isChecked) QuranGold else TextGray,
+                                            fontSize = 11.sp,
+                                            fontWeight = if (isChecked) FontWeight.Bold else FontWeight.Normal,
+                                            modifier = Modifier.padding(end = 6.dp)
+                                        )
+
+                                        Icon(
+                                            imageVector = if (isChecked) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                                            contentDescription = "Tick Mark",
+                                            tint = if (isChecked) QuranGold else TextGray,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                // Arabic Quran Scripture
+                                Text(
+                                    text = ayah.arabicText,
+                                    color = Color(quranArabicColor),
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Right,
+                                    lineHeight = 28.sp,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                // Urdu Translation
+                                Text(
+                                    text = ayah.urduTranslation,
+                                    color = Color(quranTranslationColor),
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    textAlign = TextAlign.Right,
+                                    lineHeight = 20.sp,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                // Quick Single Add Button
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            viewModel.addAyahToProject(ayah)
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (isChecked) QuranGold else DarkCardLighter,
+                                            contentColor = if (isChecked) TextDark else QuranGold
+                                        ),
+                                        shape = RoundedCornerShape(14.dp),
+                                        modifier = Modifier.height(30.dp),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = "+ Add This Ayah",
+                                            fontSize = 10.5.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
-
-            // Controls Below: Font dropdown & Size Slider with minus/plus
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Font Dropdown
-                Box(modifier = Modifier.width(130.dp)) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(38.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(DarkCard)
-                            .border(1.dp, DarkBorder, RoundedCornerShape(8.dp))
-                            .clickable { showFontMenu = true }
-                            .padding(horizontal = 10.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = quranFont,
-                            color = TextWhite,
-                            fontSize = 12.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text("▼", color = TextGray, fontSize = 9.sp)
-                    }
-
-                    DropdownMenu(
-                        expanded = showFontMenu,
-                        onDismissRequest = { showFontMenu = false },
-                        modifier = Modifier.background(DarkCard)
-                    ) {
-                        listOf("Al-Fatihah", "Naskh", "Amiri", "Modern", "Kufic").forEach { fontName ->
-                            DropdownMenuItem(
-                                text = { Text(fontName, color = TextWhite) },
-                                onClick = {
-                                    viewModel.setQuranFont(fontName)
-                                    showFontMenu = false
-                                }
-                            )
-                        }
-                    }
-                }
-
-                // Size Slider with - and +
-                Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(
-                        onClick = { viewModel.setQuranFontSize(quranFontSize - 2f) },
-                        modifier = Modifier.size(28.dp)
-                    ) {
-                        Icon(Icons.Default.Remove, contentDescription = "Decrease Size", tint = TextWhite, modifier = Modifier.size(16.dp))
-                    }
-
-                    Slider(
-                        value = quranFontSize,
-                        onValueChange = { viewModel.setQuranFontSize(it) },
-                        valueRange = 16f..44f,
-                        modifier = Modifier.weight(1f),
-                        colors = SliderDefaults.colors(
-                            thumbColor = QuranGold,
-                            activeTrackColor = QuranGold,
-                            inactiveTrackColor = DarkCardLighter
-                        )
-                    )
-
-                    IconButton(
-                        onClick = { viewModel.setQuranFontSize(quranFontSize + 2f) },
-                        modifier = Modifier.size(28.dp)
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = "Increase Size", tint = TextWhite, modifier = Modifier.size(16.dp))
-                    }
-                }
-            }
-
-            // Styling Icons Row matching reference: Font, Size, Color, Outline, Shadow, Background, Position, Animation
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceAround,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                QuranControlIconItem(
-                    label = "Font",
-                    icon = Icons.Default.TextFields,
-                    onClick = { showFontMenu = true }
-                )
-
-                QuranControlIconItem(
-                    label = "Size",
-                    icon = Icons.Default.FormatSize,
-                    onClick = { viewModel.setQuranFontSize(if (quranFontSize > 30f) 22f else 32f) }
-                )
-
-                QuranControlIconItem(
-                    label = "Color",
-                    icon = Icons.Default.ColorLens,
-                    isColorIndicator = true,
-                    indicatorColor = Color(quranArabicColor),
-                    onClick = {
-                        val next = if (quranArabicColor == 0xFFFFFFFF) 0xFFE6B74A else 0xFFFFFFFF
-                        viewModel.setQuranArabicColor(next)
-                    }
-                )
-
-                QuranControlIconItem(
-                    label = "Outline",
-                    icon = Icons.Default.CropFree,
-                    isActive = hasOutline,
-                    onClick = { viewModel.toggleQuranOutline() }
-                )
-
-                QuranControlIconItem(
-                    label = "Shadow",
-                    icon = Icons.Default.FormatPaint,
-                    isActive = hasShadow,
-                    onClick = { viewModel.toggleQuranShadow() }
-                )
-
-                QuranControlIconItem(
-                    label = "Background",
-                    icon = Icons.Default.FormatColorFill,
-                    onClick = { /* cycles background styles */ }
-                )
-
-                QuranControlIconItem(
-                    label = "Position",
-                    icon = Icons.Default.OpenWith,
-                    onClick = { /* center repositioning */ }
-                )
-
-                QuranControlIconItem(
-                    label = "Animation",
-                    icon = Icons.Default.Animation,
-                    onClick = { viewModel.setQuranAnimation(AnimationType.FADE_IN) }
-                )
-            }
         }
-    }
-}
-
-@Composable
-fun QuranControlIconItem(
-    label: String,
-    icon: ImageVector,
-    isActive: Boolean = false,
-    isColorIndicator: Boolean = false,
-    indicatorColor: Color = Color.White,
-    onClick: () -> Unit
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
-            .padding(4.dp)
-    ) {
-        if (isColorIndicator) {
-            Box(
-                modifier = Modifier
-                    .size(24.dp)
-                    .clip(CircleShape)
-                    .background(indicatorColor)
-                    .border(1.5.dp, DarkBorder, CircleShape)
-            )
-        } else {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = if (isActive) QuranGold else TextWhite,
-                modifier = Modifier.size(20.dp)
-            )
-        }
-        Spacer(modifier = Modifier.height(3.dp))
-        Text(
-            text = label,
-            color = if (isActive) QuranGold else TextGray,
-            fontSize = 9.sp
-        )
     }
 }

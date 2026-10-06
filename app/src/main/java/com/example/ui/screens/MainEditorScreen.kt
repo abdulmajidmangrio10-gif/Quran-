@@ -144,7 +144,6 @@ fun MainEditorScreen(
                 onBack = { viewModel.navigateTo(AppScreen.HOME) },
                 onUndo = { viewModel.undo() },
                 onRedo = { viewModel.redo() },
-                onCustomizeTools = { viewModel.openBottomTool(BottomToolType.CUSTOMIZE_TOOLBAR) },
                 onExport = { viewModel.openModal(EditorModal.EXPORT) }
             )
 
@@ -194,27 +193,24 @@ fun MainEditorScreen(
                 onZoomOut = { viewModel.zoomOutTimeline() }
             )
 
-            // 2. THE EDITING TOOLBAR: Canvas, Audio, Sticker, Text, Effect, Filter, Quran, Adjust, Speed
+            // 2. THE EDITING TOOLBAR: Quran, Text, Audio, Speed, Canvas, Adjust, Filter, Effects, Sticker
             EditorToolbarRow(
                 features = toolbarFeatures,
                 activeTool = activeBottomTool,
                 onToolClick = { toolId ->
                     when (toolId) {
                         "timeline" -> viewModel.closeBottomTool()
-                        "canvas" -> viewModel.openBottomTool(BottomToolType.CANVAS)
-                        "audio" -> viewModel.openBottomTool(BottomToolType.AUDIO)
-                        "sticker" -> viewModel.openBottomTool(BottomToolType.STICKER)
-                        "text" -> viewModel.openBottomTool(BottomToolType.TEXT)
-                        "templates" -> viewModel.openBottomTool(BottomToolType.TEXT_TEMPLATES)
-                        "effects" -> viewModel.openBottomTool(BottomToolType.EFFECTS)
-                        "filter" -> viewModel.openBottomTool(BottomToolType.FILTER)
                         "quran" -> viewModel.openBottomTool(BottomToolType.QURAN)
-                        "adjust" -> viewModel.openBottomTool(BottomToolType.ADJUST)
+                        "text" -> viewModel.openBottomTool(BottomToolType.TEXT)
+                        "audio" -> viewModel.openBottomTool(BottomToolType.AUDIO)
                         "speed" -> viewModel.openBottomTool(BottomToolType.SPEED)
-                        "autocaption" -> viewModel.openBottomTool(BottomToolType.AUTO_CAPTION)
+                        "canvas" -> viewModel.openBottomTool(BottomToolType.CANVAS)
+                        "adjust" -> viewModel.openBottomTool(BottomToolType.ADJUST)
+                        "filter" -> viewModel.openBottomTool(BottomToolType.FILTER)
+                        "effects" -> viewModel.openBottomTool(BottomToolType.EFFECTS)
+                        "sticker" -> viewModel.openBottomTool(BottomToolType.STICKER)
                     }
-                },
-                onCustomizeClick = { viewModel.openBottomTool(BottomToolType.CUSTOMIZE_TOOLBAR) }
+                }
             )
 
             // 3. BELOW THIS TOOLBAR IS THE ACTUAL TIMELINE (or active inline panel)
@@ -236,6 +232,26 @@ fun MainEditorScreen(
                             viewModel = viewModel
                         )
                     }
+                    BottomToolType.QURAN -> InlineQuranPanel(
+                        viewModel = viewModel,
+                        onClose = { viewModel.closeBottomTool() }
+                    )
+                    BottomToolType.TEXT -> InlineTextPanel(
+                        viewModel = viewModel,
+                        onClose = { viewModel.closeBottomTool() }
+                    )
+                    BottomToolType.AUDIO -> InlineAudioPanel(
+                        viewModel = viewModel,
+                        onClose = { viewModel.closeBottomTool() }
+                    )
+                    BottomToolType.SPEED -> InlineSpeedPanel(
+                        viewModel = viewModel,
+                        onClose = { viewModel.closeBottomTool() }
+                    )
+                    BottomToolType.CANVAS -> InlineCanvasPanel(
+                        viewModel = viewModel,
+                        onClose = { viewModel.closeBottomTool() }
+                    )
                     BottomToolType.ADJUST -> InlineAdjustPanel(
                         viewModel = viewModel,
                         onClose = { viewModel.closeBottomTool() }
@@ -248,39 +264,7 @@ fun MainEditorScreen(
                         viewModel = viewModel,
                         onClose = { viewModel.closeBottomTool() }
                     )
-                    BottomToolType.QURAN -> InlineQuranPanel(
-                        viewModel = viewModel,
-                        onClose = { viewModel.closeBottomTool() }
-                    )
-                    BottomToolType.TEXT -> InlineTextPanel(
-                        viewModel = viewModel,
-                        onClose = { viewModel.closeBottomTool() }
-                    )
-                    BottomToolType.TEXT_TEMPLATES -> TextTemplatesPanel(
-                        viewModel = viewModel,
-                        onClose = { viewModel.closeBottomTool() }
-                    )
-                    BottomToolType.CANVAS -> InlineCanvasPanel(
-                        viewModel = viewModel,
-                        onClose = { viewModel.closeBottomTool() }
-                    )
-                    BottomToolType.SPEED -> InlineSpeedPanel(
-                        viewModel = viewModel,
-                        onClose = { viewModel.closeBottomTool() }
-                    )
-                    BottomToolType.AUDIO -> InlineAudioPanel(
-                        viewModel = viewModel,
-                        onClose = { viewModel.closeBottomTool() }
-                    )
                     BottomToolType.STICKER -> InlineStickerPanel(
-                        viewModel = viewModel,
-                        onClose = { viewModel.closeBottomTool() }
-                    )
-                    BottomToolType.CUSTOMIZE_TOOLBAR -> InlineCustomizeToolbarPanel(
-                        viewModel = viewModel,
-                        onClose = { viewModel.closeBottomTool() }
-                    )
-                    BottomToolType.AUTO_CAPTION -> InlineAutoCaptionPanel(
                         viewModel = viewModel,
                         onClose = { viewModel.closeBottomTool() }
                     )
@@ -310,7 +294,6 @@ fun EditorTopBar(
     onBack: () -> Unit,
     onUndo: () -> Unit,
     onRedo: () -> Unit,
-    onCustomizeTools: () -> Unit,
     onExport: () -> Unit
 ) {
     Row(
@@ -517,22 +500,19 @@ fun EditorTransportControlStrip(
 fun EditorToolbarRow(
     features: List<ToolbarFeatureItem>,
     activeTool: BottomToolType,
-    onToolClick: (String) -> Unit,
-    onCustomizeClick: () -> Unit
+    onToolClick: (String) -> Unit
 ) {
     val iconForId: (String) -> ImageVector = { id ->
         when (id) {
-            "canvas" -> Icons.Default.AspectRatio
-            "audio" -> Icons.Default.Audiotrack
-            "sticker" -> Icons.Default.NightlightRound
-            "text" -> Icons.Default.TextFields
-            "templates" -> Icons.Default.TextFields
-            "effects" -> Icons.Default.AutoAwesome
-            "filter" -> Icons.Default.Filter
             "quran" -> Icons.Default.MenuBook
-            "adjust" -> Icons.Default.Tune
+            "text" -> Icons.Default.TextFields
+            "audio" -> Icons.Default.Audiotrack
             "speed" -> Icons.Default.Speed
-            "autocaption" -> Icons.Default.ClosedCaption
+            "canvas" -> Icons.Default.AspectRatio
+            "adjust" -> Icons.Default.Tune
+            "filter" -> Icons.Default.Filter
+            "effects" -> Icons.Default.AutoAwesome
+            "sticker" -> Icons.Default.NightlightRound
             else -> Icons.Default.Movie
         }
     }
@@ -577,15 +557,13 @@ fun EditorToolbarRow(
             val isCurrentActive = when (item.id) {
                 "quran" -> activeTool == BottomToolType.QURAN
                 "text" -> activeTool == BottomToolType.TEXT
-                "templates" -> activeTool == BottomToolType.TEXT_TEMPLATES
+                "audio" -> activeTool == BottomToolType.AUDIO
+                "speed" -> activeTool == BottomToolType.SPEED
+                "canvas" -> activeTool == BottomToolType.CANVAS
                 "adjust" -> activeTool == BottomToolType.ADJUST
                 "filter" -> activeTool == BottomToolType.FILTER
                 "effects" -> activeTool == BottomToolType.EFFECTS
-                "canvas" -> activeTool == BottomToolType.CANVAS
-                "audio" -> activeTool == BottomToolType.AUDIO
-                "speed" -> activeTool == BottomToolType.SPEED
                 "sticker" -> activeTool == BottomToolType.STICKER
-                "autocaption" -> activeTool == BottomToolType.AUTO_CAPTION
                 else -> false
             }
 

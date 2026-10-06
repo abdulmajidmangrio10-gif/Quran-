@@ -140,7 +140,7 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Editor Customization Card (Matching Reference Screen #6!)
+            // App Appearance & Theme Card
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -155,73 +155,14 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Editor Customization",
+                            text = "Appearance & Display",
                             color = TextWhite,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold
                         )
-                        Text("v", color = TextGray, fontSize = 12.sp)
                     }
 
                     Spacer(modifier = Modifier.height(14.dp))
-
-                    // Icon Size Slider
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Icon Size", color = TextWhite, fontSize = 12.sp, modifier = Modifier.width(100.dp))
-                        Slider(
-                            value = settings.iconSize,
-                            onValueChange = { viewModel.updateSettings(iconSize = it) },
-                            valueRange = 6f..16f,
-                            modifier = Modifier.weight(1f),
-                            colors = SliderDefaults.colors(
-                                thumbColor = QuranGold,
-                                activeTrackColor = QuranGold,
-                                inactiveTrackColor = DarkCardLighter
-                            )
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "${settings.iconSize.toInt()}",
-                            color = QuranGold,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.width(28.dp),
-                            textAlign = TextAlign.End
-                        )
-                    }
-
-                    // Text Size Slider
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Text Size", color = TextWhite, fontSize = 12.sp, modifier = Modifier.width(100.dp))
-                        Slider(
-                            value = settings.textSize,
-                            onValueChange = { viewModel.updateSettings(textSize = it) },
-                            valueRange = 3f..12f,
-                            modifier = Modifier.weight(1f),
-                            colors = SliderDefaults.colors(
-                                thumbColor = QuranGold,
-                                activeTrackColor = QuranGold,
-                                inactiveTrackColor = DarkCardLighter
-                            )
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "${settings.textSize.toInt()}",
-                            color = QuranGold,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.width(28.dp),
-                            textAlign = TextAlign.End
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
 
                     // Theme Accent Color Palette Circles
                     Row(
@@ -263,7 +204,7 @@ fun SettingsScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, contentDescription = null, tint = TextGray, modifier = Modifier.size(12.dp))
                     }
 
-                    // Language selector (English)
+                    // Language selector (English / Urdu)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -280,91 +221,9 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Feature Management Card (Matching Reference Screen #6!)
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .border(1.dp, DarkBorder, RoundedCornerShape(14.dp)),
-                colors = CardDefaults.cardColors(containerColor = DarkCard)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Feature Management",
-                            color = TextWhite,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text("^", color = TextGray, fontSize = 12.sp)
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    FeatureToggleRow(
-                        title = "Quran",
-                        icon = Icons.Default.MenuBook,
-                        primaryOption = "KEEP",
-                        secondaryOption = "HIDE",
-                        isPrimarySelected = settings.featureQuran == "KEEP",
-                        onToggle = { viewModel.updateSettings(featureQuran = if (it) "KEEP" else "HIDE") }
-                    )
-
-                    FeatureToggleRow(
-                        title = "Auto Caption",
-                        icon = Icons.Default.ClosedCaption,
-                        primaryOption = "KEEP",
-                        secondaryOption = "HIDE",
-                        isPrimarySelected = settings.featureAutoCaption == "KEEP",
-                        onToggle = { viewModel.updateSettings(featureAutoCaption = if (it) "KEEP" else "HIDE") }
-                    )
-
-                    FeatureToggleRow(
-                        title = "Audio",
-                        icon = Icons.Default.Audiotrack,
-                        primaryOption = "KEEP",
-                        secondaryOption = "DISABLE",
-                        isPrimarySelected = settings.featureAudio == "KEEP",
-                        onToggle = { viewModel.updateSettings(featureAudio = if (it) "KEEP" else "DISABLE") }
-                    )
-
-                    FeatureToggleRow(
-                        title = "Effects",
-                        icon = Icons.Default.AutoAwesome,
-                        primaryOption = "KEEP",
-                        secondaryOption = "DISABLE",
-                        isPrimarySelected = settings.featureEffects == "KEEP",
-                        onToggle = { viewModel.updateSettings(featureEffects = if (it) "KEEP" else "DISABLE") }
-                    )
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                viewModel.openBottomTool(com.example.ui.viewmodel.BottomToolType.CUSTOMIZE_TOOLBAR)
-                                viewModel.navigateTo(AppScreen.MAIN_EDITOR)
-                            }
-                            .padding(vertical = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Move to Main Toolbar / ترتیب فیچرز", color = QuranGold, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                        Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, contentDescription = null, tint = QuranGold, modifier = Modifier.size(12.dp))
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Export Settings
+            // Export & Video Quality Settings
             SettingsNavigationRow(
-                title = "Export Settings",
+                title = "Export & Quality Settings (1080p, 60fps)",
                 icon = Icons.Default.VideoSettings,
                 onClick = { }
             )

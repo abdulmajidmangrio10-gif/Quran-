@@ -193,18 +193,18 @@ data class ExportSettings(
 
 data class EditingProject(
     val id: String = UUID.randomUUID().toString(),
-    val title: String = "Project 1 - Surah Rahman",
+    val title: String = "Quran Video",
     val videoUri: String? = null,
     val thumbnailUri: String? = null,
-    val durationMs: Long = 84000L, // 01:24
-    val createdAt: String = "Apr 18, 2025",
+    val durationMs: Long = 60000L,
+    val createdAt: String = "",
     val updatedAt: Long = System.currentTimeMillis(),
     val canvas: CanvasConfig = CanvasConfig(),
     val videoConfig: VideoClipConfig = VideoClipConfig(),
     val videoClips: List<VideoTimelineClip> = emptyList(),
-    val quranClips: List<QuranClip> = listOf(QuranClip()),
-    val textClips: List<TextClip> = listOf(TextClip()),
-    val audioClips: List<AudioClip> = listOf(AudioClip()),
+    val quranClips: List<QuranClip> = emptyList(),
+    val textClips: List<TextClip> = emptyList(),
+    val audioClips: List<AudioClip> = emptyList(),
     val imageClips: List<ImageClip> = emptyList(),
     val stickerClips: List<StickerClip> = emptyList(),
     val exportSettings: ExportSettings = ExportSettings()
@@ -216,10 +216,6 @@ data class AppSettings(
     val accentColorIndex: Int = 0, // 0=Gold, 1=Gray, 2=Teal, 3=Blue, 4=Purple
     val isDarkTheme: Boolean = true,
     val language: String = "English",
-    val featureQuran: String = "KEEP",
-    val featureAutoCaption: String = "KEEP",
-    val featureAudio: String = "KEEP",
-    val featureEffects: String = "KEEP",
     val defaultResolution: String = "1080p",
     val defaultFps: Int = 30,
     val defaultQuality: String = "High",

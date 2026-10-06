@@ -54,7 +54,6 @@ enum class EditorModal {
     CANVAS,
     VIDEO,
     SPEED,
-    AUTO_CAPTION,
     STICKER,
     EXPORT
 }
@@ -63,16 +62,13 @@ enum class BottomToolType {
     TIMELINE,
     QURAN,
     TEXT,
-    TEXT_TEMPLATES,
+    AUDIO,
+    SPEED,
+    CANVAS,
     ADJUST,
     FILTER,
     EFFECTS,
-    AUDIO,
-    CANVAS,
-    SPEED,
-    STICKER,
-    AUTO_CAPTION,
-    CUSTOMIZE_TOOLBAR
+    STICKER
 }
 
 data class ToolbarFeatureItem(
@@ -151,21 +147,19 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     private val _activeBottomTool = MutableStateFlow(BottomToolType.TIMELINE)
     val activeBottomTool: StateFlow<BottomToolType> = _activeBottomTool.asStateFlow()
 
-    // Customizable Toolbar Features
+    // Clean Toolbar Features
     private val _toolbarFeatures = MutableStateFlow(
         listOf(
             ToolbarFeatureItem("timeline", "Timeline"),
             ToolbarFeatureItem("quran", "Quran"),
             ToolbarFeatureItem("text", "Text"),
-            ToolbarFeatureItem("templates", "Templates"),
-            ToolbarFeatureItem("adjust", "Adjust"),
-            ToolbarFeatureItem("filter", "Filter"),
-            ToolbarFeatureItem("effects", "Effects"),
             ToolbarFeatureItem("canvas", "Canvas"),
             ToolbarFeatureItem("audio", "Audio"),
             ToolbarFeatureItem("speed", "Speed"),
-            ToolbarFeatureItem("sticker", "Sticker"),
-            ToolbarFeatureItem("autocaption", "Auto Caption")
+            ToolbarFeatureItem("adjust", "Adjust"),
+            ToolbarFeatureItem("filter", "Filter"),
+            ToolbarFeatureItem("effects", "Effects"),
+            ToolbarFeatureItem("sticker", "Sticker")
         )
     )
     val toolbarFeatures: StateFlow<List<ToolbarFeatureItem>> = _toolbarFeatures.asStateFlow()
@@ -200,15 +194,13 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             ToolbarFeatureItem("timeline", "Timeline"),
             ToolbarFeatureItem("quran", "Quran"),
             ToolbarFeatureItem("text", "Text"),
-            ToolbarFeatureItem("templates", "Templates"),
-            ToolbarFeatureItem("adjust", "Adjust"),
-            ToolbarFeatureItem("filter", "Filter"),
-            ToolbarFeatureItem("effects", "Effects"),
             ToolbarFeatureItem("canvas", "Canvas"),
             ToolbarFeatureItem("audio", "Audio"),
             ToolbarFeatureItem("speed", "Speed"),
-            ToolbarFeatureItem("sticker", "Sticker"),
-            ToolbarFeatureItem("autocaption", "Auto Caption")
+            ToolbarFeatureItem("adjust", "Adjust"),
+            ToolbarFeatureItem("filter", "Filter"),
+            ToolbarFeatureItem("effects", "Effects"),
+            ToolbarFeatureItem("sticker", "Sticker")
         )
     }
 
@@ -243,11 +235,14 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     private val _quranSearchQuery = MutableStateFlow("")
     val quranSearchQuery: StateFlow<String> = _quranSearchQuery.asStateFlow()
 
-    private val _selectedSurah = MutableStateFlow(QuranData.ALL_SURAHS[93]) // Al-Inshirah (94)
+    private val _selectedSurah = MutableStateFlow(QuranData.ALL_SURAHS[0]) // Al-Fatihah (1)
     val selectedSurah: StateFlow<SurahMeta> = _selectedSurah.asStateFlow()
 
-    private val _selectedAyah = MutableStateFlow(QuranData.getAyah(94, 6)) // "إِنَّ مَعَ الْعُسْرِ يُسْرًا"
+    private val _selectedAyah = MutableStateFlow(QuranData.getAyah(1, 1))
     val selectedAyah: StateFlow<AyahItem> = _selectedAyah.asStateFlow()
+
+    private val _selectedAyahNumbers = MutableStateFlow<Set<Int>>(setOf(1))
+    val selectedAyahNumbers: StateFlow<Set<Int>> = _selectedAyahNumbers.asStateFlow()
 
     private val _quranFont = MutableStateFlow("Al-Fatihah")
     val quranFont: StateFlow<String> = _quranFont.asStateFlow()
@@ -303,13 +298,6 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _exportCompleted = MutableStateFlow(false)
     val exportCompleted: StateFlow<Boolean> = _exportCompleted.asStateFlow()
-
-    // Auto-caption state
-    private val _autoCaptionStatus = MutableStateFlow("Ready to analyze audio")
-    val autoCaptionStatus: StateFlow<String> = _autoCaptionStatus.asStateFlow()
-
-    private val _isAnalyzingCaption = MutableStateFlow(false)
-    val isAnalyzingCaption: StateFlow<Boolean> = _isAnalyzingCaption.asStateFlow()
 
     private var playbackJob: Job? = null
 
@@ -1313,11 +1301,85 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         val ayahs = QuranData.getAyahsForSurah(surah.number)
         if (ayahs.isNotEmpty()) {
             _selectedAyah.value = ayahs[0]
+            _selectedAyahNumbers.value = setOf(ayahs[0].ayahNumber)
         }
     }
 
     fun selectAyah(ayah: AyahItem) {
         _selectedAyah.value = ayah
+        _selectedAyahNumbers.value = setOf(ayah.ayahNumber)
+    }
+
+    fun toggleAyahSelection(ayah: AyahItem) {
+        val current = _selectedAyahNumbers.value
+        val num = ayah.ayahNumber
+        if (current.contains(num)) {
+            if (current.size > 1) {
+                val next = current - num
+                _selectedAyahNumbers.value = next
+                _selectedAyah.value = QuranData.getAyah(_selectedSurah.value.number, next.first())
+            }
+        } else {
+            _selectedAyahNumbers.value = current + num
+            _selectedAyah.value = ayah
+        }
+    }
+
+    fun addAyahToProject(ayah: AyahItem) {
+        selectAyah(ayah)
+        addQuranToVideo()
+    }
+
+    fun addSelectedAyahsToVideo() {
+        val surah = _selectedSurah.value
+        val selectedNums = _selectedAyahNumbers.value.sorted()
+        if (selectedNums.isEmpty()) {
+            addQuranToVideo()
+            return
+        }
+        pushSnapshot()
+        val playhead = _currentPlayheadMs.value
+        val totalProjDur = _currentProject.value.durationMs
+        var currentStart = playhead
+        val newClips = mutableListOf<QuranClip>()
+
+        for (num in selectedNums) {
+            val ayah = QuranData.getAyah(surah.number, num)
+            val clipDur = 6000L
+            val clip = QuranClip(
+                id = UUID.randomUUID().toString(),
+                surahNumber = surah.number,
+                surahName = surah.nameEnglish,
+                ayahStart = ayah.ayahNumber,
+                ayahEnd = ayah.ayahNumber,
+                arabicText = ayah.arabicText,
+                urduTranslation = ayah.urduTranslation,
+                startTimeMs = currentStart,
+                durationMs = clipDur,
+                fontStyle = _quranFont.value,
+                fontSize = _quranFontSize.value,
+                arabicColor = _quranArabicColor.value,
+                translationColor = _quranTranslationColor.value,
+                hasOutline = _quranHasOutline.value,
+                hasShadow = _quranHasShadow.value,
+                backgroundType = _quranBackground.value,
+                animation = _quranAnimation.value
+            )
+            newClips.add(clip)
+            currentStart += clipDur
+        }
+
+        val newTotalDuration = maxOf(totalProjDur, currentStart)
+        val updated = _currentProject.value.quranClips + newClips
+        _currentProject.value = _currentProject.value.copy(
+            quranClips = updated,
+            durationMs = newTotalDuration
+        )
+        _selectedTrack.value = TrackType.QURAN
+        _selectedClipId.value = newClips.lastOrNull()?.id
+        _activeBottomTool.value = BottomToolType.TIMELINE
+        _currentScreen.value = AppScreen.MAIN_EDITOR
+        saveCurrentProject()
     }
 
     fun setQuranFont(font: String) {
@@ -1542,46 +1604,6 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         saveCurrentProject()
     }
 
-    // Auto Caption Generator
-    fun generateAutoCaptions(surahNumber: Int = 94) {
-        _isAnalyzingCaption.value = true
-        val surah = com.example.data.quran.QuranData.ALL_SURAHS.find { it.number == surahNumber }
-            ?: com.example.data.quran.QuranData.ALL_SURAHS.first()
-        _autoCaptionStatus.value = "Analyzing audio cadence & waveform..."
-        viewModelScope.launch {
-            delay(700)
-            _autoCaptionStatus.value = "Matching ${surah.nameEnglish} (${surah.nameArabic})..."
-            delay(700)
-
-            pushSnapshot()
-            val totalMs = _currentProject.value.durationMs.coerceAtLeast(10000L)
-            val ayahs = com.example.data.quran.QuranData.getAyahsForSurah(surah.number)
-            val clipCount = ayahs.size.coerceAtMost(8)
-            val durationPerAyah = (totalMs / clipCount.coerceAtLeast(1)).coerceIn(3000L, 12000L)
-
-            val autoGeneratedClips = ayahs.take(clipCount).mapIndexed { idx, ayah ->
-                QuranClip(
-                    id = UUID.randomUUID().toString(),
-                    surahNumber = surah.number,
-                    surahName = surah.nameEnglish,
-                    ayahStart = ayah.ayahNumber,
-                    ayahEnd = ayah.ayahNumber,
-                    arabicText = ayah.arabicText,
-                    urduTranslation = ayah.urduTranslation,
-                    startTimeMs = (idx * durationPerAyah).coerceAtMost(totalMs - 2000L),
-                    durationMs = durationPerAyah,
-                    animation = AnimationType.SLIDE_UP
-                )
-            }
-            _currentProject.value = _currentProject.value.copy(quranClips = autoGeneratedClips)
-            _selectedTrack.value = TrackType.QURAN
-            _selectedClipId.value = autoGeneratedClips.firstOrNull()?.id
-            _isAnalyzingCaption.value = false
-            _autoCaptionStatus.value = "${autoGeneratedClips.size} Ayahs of ${surah.nameEnglish} synchronized to timeline!"
-            saveCurrentProject()
-        }
-    }
-
     // Settings actions
     fun updateSettings(
         iconSize: Float? = null,
@@ -1589,10 +1611,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         accentColorIndex: Int? = null,
         isDarkTheme: Boolean? = null,
         language: String? = null,
-        featureQuran: String? = null,
-        featureAutoCaption: String? = null,
-        featureAudio: String? = null,
-        featureEffects: String? = null,
+        defaultResolution: String? = null,
+        defaultFps: Int? = null,
+        defaultQuality: String? = null,
         watermark: Boolean? = null
     ) {
         val curr = _settings.value
@@ -1602,10 +1623,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             accentColorIndex = accentColorIndex ?: curr.accentColorIndex,
             isDarkTheme = isDarkTheme ?: curr.isDarkTheme,
             language = language ?: curr.language,
-            featureQuran = featureQuran ?: curr.featureQuran,
-            featureAutoCaption = featureAutoCaption ?: curr.featureAutoCaption,
-            featureAudio = featureAudio ?: curr.featureAudio,
-            featureEffects = featureEffects ?: curr.featureEffects,
+            defaultResolution = defaultResolution ?: curr.defaultResolution,
+            defaultFps = defaultFps ?: curr.defaultFps,
+            defaultQuality = defaultQuality ?: curr.defaultQuality,
             watermarkEnabled = watermark ?: curr.watermarkEnabled
         )
     }
