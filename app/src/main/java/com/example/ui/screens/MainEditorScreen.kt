@@ -65,7 +65,11 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -651,6 +655,16 @@ fun VideoPreviewCard(
             ) {
                 // Real Android VideoView for imported gallery video
                 if (currentVideoClip?.isBlank != true && project.videoUri != null) {
+                    var videoPlayerRef by remember { mutableStateOf<android.media.MediaPlayer?>(null) }
+                    val isVideoMuted = isMuted || currentVideoClip?.isMuted == true
+
+                    LaunchedEffect(isVideoMuted, currentVideoClip?.volume) {
+                        try {
+                            val v = if (isVideoMuted) 0f else (currentVideoClip?.volume ?: 1f).coerceIn(0f, 1f)
+                            videoPlayerRef?.setVolume(v, v)
+                        } catch (_: Exception) {}
+                    }
+
                     AndroidView(
                         modifier = Modifier.fillMaxSize(),
                         factory = { ctx ->
@@ -658,8 +672,9 @@ fun VideoPreviewCard(
                                 try {
                                     setVideoURI(Uri.parse(project.videoUri))
                                     setOnPreparedListener { mp ->
+                                        videoPlayerRef = mp
                                         mp.isLooping = false
-                                        val v = if (isMuted || currentVideoClip?.isMuted == true) 0f else (currentVideoClip?.volume ?: 1f)
+                                        val v = if (isVideoMuted) 0f else (currentVideoClip?.volume ?: 1f).coerceIn(0f, 1f)
                                         mp.setVolume(v, v)
                                         try {
                                             val p = mp.playbackParams
@@ -673,6 +688,9 @@ fun VideoPreviewCard(
                         },
                         update = { vv ->
                             try {
+                                val v = if (isVideoMuted) 0f else (currentVideoClip?.volume ?: 1f).coerceIn(0f, 1f)
+                                videoPlayerRef?.setVolume(v, v)
+
                                 if (isPlaying) {
                                     if (!vv.isPlaying) {
                                         vv.seekTo(currentPlayheadMs.toInt())
