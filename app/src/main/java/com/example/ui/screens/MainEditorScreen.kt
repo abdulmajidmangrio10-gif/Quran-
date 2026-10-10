@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.graphicsLayer
@@ -43,12 +44,14 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.Filter
+import androidx.compose.material.icons.filled.FitScreen
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.NightlightRound
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Tune
@@ -621,6 +624,10 @@ fun VideoPreviewCard(
         currentPlayheadMs >= it.startTimeMs && currentPlayheadMs <= (it.startTimeMs + it.durationMs)
     }
 
+    val currentScale = currentVideoClip?.scale ?: cfg.scale
+    val currentOffsetX = currentVideoClip?.offsetX ?: cfg.offsetX
+    val currentOffsetY = currentVideoClip?.offsetY ?: cfg.offsetY
+
     // Canvas Aspect Ratio
     val targetAspect = when (project.canvas.aspectRatio) {
         com.example.data.model.AspectRatioOption.RATIO_9_16 -> 9f / 16f
@@ -650,100 +657,137 @@ fun VideoPreviewCard(
                     .aspectRatio(targetAspect)
                     .fillMaxSize()
                     .clip(RoundedCornerShape(8.dp))
-                    .background(Color.Black),
+                    .background(Color.Black)
+                    .pointerInput(currentVideoClip?.id) {
+                        detectTransformGestures { _, pan, zoom, _ ->
+                            val oldScale = currentVideoClip?.scale ?: cfg.scale
+                            val oldX = currentVideoClip?.offsetX ?: cfg.offsetX
+                            val oldY = currentVideoClip?.offsetY ?: cfg.offsetY
+
+                            val newScale = (oldScale * zoom).coerceIn(1.0f, 5.0f)
+
+                            val maxPanX = if (newScale > 1f) (size.width * (newScale - 1f) / 2f) else 0f
+                            val maxPanY = if (newScale > 1f) (size.height * (newScale - 1f) / 2f) else 0f
+
+                            val newX = if (maxPanX > 0f) (oldX + pan.x).coerceIn(-maxPanX, maxPanX) else 0f
+                            val newY = if (maxPanY > 0f) (oldY + pan.y).coerceIn(-maxPanY, maxPanY) else 0f
+
+                            viewModel.updateVideoTransform(newScale, newX, newY)
+                        }
+                    },
                 contentAlignment = Alignment.Center
             ) {
-                // Real Android VideoView for imported gallery video
-                if (currentVideoClip?.isBlank != true && project.videoUri != null) {
-                    var videoPlayerRef by remember { mutableStateOf<android.media.MediaPlayer?>(null) }
-                    val isVideoMuted = isMuted || currentVideoClip?.isMuted == true
+                // Video & canvas layer transformed with hardware acceleration
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            scaleX = currentScale
+                            scaleY = currentScale
+                            translationX = currentOffsetX
+                            translationY = currentOffsetY
+                        }
+                ) {
+                    // Real Android VideoView for imported gallery video
+                    if (currentVideoClip?.isBlank != true && project.videoUri != null) {
+                        var videoPlayerRef by remember { mutableStateOf<android.media.MediaPlayer?>(null) }
+                        val isVideoMuted = isMuted || currentVideoClip?.isMuted == true
 
-                    LaunchedEffect(isVideoMuted, currentVideoClip?.volume) {
-                        try {
-                            val v = if (isVideoMuted) 0f else (currentVideoClip?.volume ?: 1f).coerceIn(0f, 1f)
-                            videoPlayerRef?.setVolume(v, v)
-                        } catch (_: Exception) {}
-                    }
-
-                    AndroidView(
-                        modifier = Modifier.fillMaxSize(),
-                        factory = { ctx ->
-                            VideoView(ctx).apply {
-                                try {
-                                    setVideoURI(Uri.parse(project.videoUri))
-                                    setOnPreparedListener { mp ->
-                                        videoPlayerRef = mp
-                                        mp.isLooping = false
-                                        val v = if (isVideoMuted) 0f else (currentVideoClip?.volume ?: 1f).coerceIn(0f, 1f)
-                                        mp.setVolume(v, v)
-                                        try {
-                                            val p = mp.playbackParams
-                                            p.speed = project.videoConfig.speed.coerceIn(0.25f, 3.0f)
-                                            mp.playbackParams = p
-                                        } catch (_: Exception) {}
-                                    }
-                                    setOnErrorListener { _, _, _ -> true }
-                                } catch (_: Exception) {}
-                            }
-                        },
-                        update = { vv ->
+                        LaunchedEffect(isVideoMuted, currentVideoClip?.volume) {
                             try {
                                 val v = if (isVideoMuted) 0f else (currentVideoClip?.volume ?: 1f).coerceIn(0f, 1f)
                                 videoPlayerRef?.setVolume(v, v)
-
-                                if (isPlaying) {
-                                    if (!vv.isPlaying) {
-                                        vv.seekTo(currentPlayheadMs.toInt())
-                                        vv.start()
-                                    }
-                                } else {
-                                    if (vv.isPlaying) {
-                                        vv.pause()
-                                    }
-                                    val diff = Math.abs(vv.currentPosition - currentPlayheadMs.toInt())
-                                    if (diff > 500) {
-                                        vv.seekTo(currentPlayheadMs.toInt())
-                                    }
-                                }
                             } catch (_: Exception) {}
                         }
-                    )
-                } else if (currentVideoClip?.isBlank == true) {
-                    // Real Blank Canvas Clip
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color(0xFF0E0E14)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "Blank Canvas",
-                            color = TextGray,
-                            fontSize = 13.sp
+
+                        AndroidView(
+                            modifier = Modifier.fillMaxSize(),
+                            factory = { ctx ->
+                                VideoView(ctx).apply {
+                                    try {
+                                        setVideoURI(Uri.parse(project.videoUri))
+                                        setOnPreparedListener { mp ->
+                                            videoPlayerRef = mp
+                                            mp.isLooping = false
+                                            val v = if (isVideoMuted) 0f else (currentVideoClip?.volume ?: 1f).coerceIn(0f, 1f)
+                                            mp.setVolume(v, v)
+                                            try {
+                                                val p = mp.playbackParams
+                                                p.speed = project.videoConfig.speed.coerceIn(0.25f, 3.0f)
+                                                mp.playbackParams = p
+                                            } catch (_: Exception) {}
+                                        }
+                                        setOnErrorListener { _, _, _ -> true }
+                                    } catch (_: Exception) {}
+                                }
+                            },
+                            update = { vv ->
+                                try {
+                                    val v = if (isVideoMuted) 0f else (currentVideoClip?.volume ?: 1f).coerceIn(0f, 1f)
+                                    videoPlayerRef?.setVolume(v, v)
+
+                                    val sourcePosMs = if (currentVideoClip != null) {
+                                        val offsetFromClipStart = (currentPlayheadMs - currentVideoClip.startTimeMs).coerceAtLeast(0L)
+                                        val target = currentVideoClip.trimStartMs + offsetFromClipStart
+                                        target.coerceIn(currentVideoClip.trimStartMs, currentVideoClip.trimStartMs + currentVideoClip.durationMs)
+                                    } else {
+                                        currentPlayheadMs
+                                    }
+
+                                    if (isPlaying) {
+                                        if (!vv.isPlaying) {
+                                            vv.seekTo(sourcePosMs.toInt())
+                                            vv.start()
+                                        }
+                                    } else {
+                                        if (vv.isPlaying) {
+                                            vv.pause()
+                                        }
+                                        val diff = Math.abs(vv.currentPosition - sourcePosMs.toInt())
+                                        if (diff > 500) {
+                                            vv.seekTo(sourcePosMs.toInt())
+                                        }
+                                    }
+                                } catch (_: Exception) {}
+                            }
                         )
-                    }
-                } else {
-                    // Nature placeholder when no video is selected yet
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(
-                                        Color(0xFF2C3E50),
-                                        Color(0xFF1F4037),
-                                        Color(0xFF0F2027)
+                    } else if (currentVideoClip?.isBlank == true) {
+                        // Real Blank Canvas Clip
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color(0xFF0E0E14)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Blank Canvas",
+                                color = TextGray,
+                                fontSize = 13.sp
+                            )
+                        }
+                    } else {
+                        // Nature placeholder when no video is selected yet
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    Brush.verticalGradient(
+                                        colors = listOf(
+                                            Color(0xFF2C3E50),
+                                            Color(0xFF1F4037),
+                                            Color(0xFF0F2027)
+                                        )
                                     )
-                                )
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "No Video Selected\nTap '+' on Timeline to add Video",
-                            color = TextGray,
-                            fontSize = 12.sp,
-                            textAlign = TextAlign.Center
-                        )
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "No Video Selected\nTap '+' on Timeline to add Video",
+                                color = TextGray,
+                                fontSize = 12.sp,
+                                textAlign = TextAlign.Center
+                            )
+                        }
                     }
                 }
 
@@ -1095,7 +1139,52 @@ fun VideoPreviewCard(
                 }
             }
 
-            // Bottom Overlays (Timecode on Left, Mute + Fullscreen on Right)
+            // Floating Zoom / Scale HUD Bar
+            if (currentScale > 1.01f || currentOffsetX != 0f || currentOffsetY != 0f) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 8.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(Color(0xCC111116))
+                        .border(1.dp, QuranGold.copy(alpha = 0.7f), RoundedCornerShape(20.dp))
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "Zoom: ${String.format("%.1fx", currentScale)}",
+                            color = QuranGold,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(QuranGold.copy(alpha = 0.25f))
+                                .clickable { viewModel.resetVideoZoom() }
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                                .testTag("reset_zoom_button")
+                        ) {
+                            Text("Reset Zoom", color = TextWhite, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color.White.copy(alpha = 0.15f))
+                                .clickable { viewModel.fitVideoToCanvas() }
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                                .testTag("fit_to_canvas_button")
+                        ) {
+                            Text("Fit to Canvas", color = TextWhite, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            // Bottom Overlays (Timecode on Left, Reset/Fit, Mute + Fullscreen on Right)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1118,7 +1207,31 @@ fun VideoPreviewCard(
                     )
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    IconButton(
+                        onClick = { viewModel.resetVideoZoom() },
+                        modifier = Modifier.size(26.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.RestartAlt,
+                            contentDescription = "Reset Zoom",
+                            tint = if (currentScale > 1.01f || currentOffsetX != 0f || currentOffsetY != 0f) QuranGold else TextWhite,
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = { viewModel.fitVideoToCanvas() },
+                        modifier = Modifier.size(26.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FitScreen,
+                            contentDescription = "Fit to Canvas",
+                            tint = TextWhite,
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+
                     IconButton(
                         onClick = onToggleMute,
                         modifier = Modifier.size(26.dp)

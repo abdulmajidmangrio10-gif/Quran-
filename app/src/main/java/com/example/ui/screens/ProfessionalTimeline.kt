@@ -7,7 +7,11 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,6 +27,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -119,6 +125,7 @@ fun ProfessionalTimelineView(
     }
 
     val scrollState = rememberScrollState()
+    val coroutineScope = rememberCoroutineScope()
 
     // Base scale: at zoom 1.0f, 1 second = 55dp (0.055 dp per ms)
     val dpPerMs = 0.055f * timelineZoom
@@ -285,6 +292,41 @@ fun ProfessionalTimelineView(
                 Box(
                     modifier = Modifier
                         .weight(1f)
+                        .pointerInput(currentPlayheadMs) {
+                            awaitEachGesture {
+                                awaitFirstDown(requireUnconsumed = false)
+                                var prevDistance = 0f
+                                do {
+                                    val event = awaitPointerEvent()
+                                    val pressedPointers = event.changes.filter { it.pressed }
+                                    if (pressedPointers.size >= 2) {
+                                        val p1 = pressedPointers[0].position
+                                        val p2 = pressedPointers[1].position
+                                        val currentDistance = (p1 - p2).getDistance()
+                                        if (prevDistance > 0f && currentDistance > 0f) {
+                                            val zoomMultiplier = currentDistance / prevDistance
+                                            if (Math.abs(zoomMultiplier - 1f) > 0.005f) {
+                                                val oldZoom = timelineZoom
+                                                val newZoom = (oldZoom * zoomMultiplier).coerceIn(0.4f, 4.0f)
+                                                if (newZoom != oldZoom) {
+                                                    val oldScale = 0.055f * oldZoom
+                                                    val newScale = 0.055f * newZoom
+                                                    val diffPx = ((currentPlayheadMs * newScale - currentPlayheadMs * oldScale) * density.density).toInt()
+                                                    viewModel.setTimelineZoom(newZoom)
+                                                    coroutineScope.launch {
+                                                        scrollState.scrollTo((scrollState.value + diffPx).coerceIn(0, scrollState.maxValue))
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        prevDistance = currentDistance
+                                        event.changes.forEach { it.consume() }
+                                    } else {
+                                        prevDistance = 0f
+                                    }
+                                } while (event.changes.any { it.pressed })
+                            }
+                        }
                         .horizontalScroll(scrollState)
                         .testTag("timeline_scroll_container")
                 ) {
@@ -293,7 +335,8 @@ fun ProfessionalTimelineView(
                         TimelineTimeRuler(
                             totalDurationMs = totalDurationMs,
                             dpPerMs = dpPerMs,
-                            timelineWidthDp = timelineContentWidthDp
+                            timelineWidthDp = timelineContentWidthDp,
+                            onSeek = { viewModel.seekTo(it) }
                         )
 
                         Spacer(modifier = Modifier.height(4.dp))
@@ -473,8 +516,10 @@ fun TrackMiniLabel(
 fun TimelineTimeRuler(
     totalDurationMs: Long,
     dpPerMs: Float,
-    timelineWidthDp: androidx.compose.ui.unit.Dp
+    timelineWidthDp: androidx.compose.ui.unit.Dp,
+    onSeek: (Long) -> Unit = {}
 ) {
+    val density = LocalDensity.current
     // Generate tick marks every 1 second or 2 seconds based on scale
     val stepSec = if (dpPerMs > 0.06f) 1 else 2
     val totalSec = (totalDurationMs / 1000).toInt() + 10
@@ -484,6 +529,12 @@ fun TimelineTimeRuler(
             .width(timelineWidthDp)
             .height(20.dp)
             .padding(horizontal = 4.dp)
+            .pointerInput(dpPerMs, totalDurationMs) {
+                detectTapGestures { offset ->
+                    val seekMs = (with(density) { offset.x.toDp() }.value / dpPerMs).toLong().coerceIn(0L, totalDurationMs)
+                    onSeek(seekMs)
+                }
+            }
     ) {
         for (s in 0..totalSec step stepSec) {
             val offsetDp = (s * 1000 * dpPerMs).dp
@@ -765,6 +816,7 @@ fun TimelineClipItem(
     val density = LocalDensity.current
     val clipWidthDp = maxOf(40f, durationMs * dpPerMs).dp
     val clipOffsetDp = (startTimeMs * dpPerMs).dp
+    var isDraggingClip by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -772,10 +824,10 @@ fun TimelineClipItem(
             .width(clipWidthDp)
             .fillMaxHeight()
             .clip(RoundedCornerShape(8.dp))
-            .background(accentColor.copy(alpha = 0.28f))
+            .background(if (isDraggingClip) accentColor.copy(alpha = 0.45f) else accentColor.copy(alpha = 0.28f))
             .border(
-                width = if (isSelected) 2.dp else 1.dp,
-                color = if (isSelected) QuranGold else accentColor.copy(alpha = 0.6f),
+                width = if (isSelected || isDraggingClip) 2.dp else 1.dp,
+                color = if (isSelected || isDraggingClip) QuranGold else accentColor.copy(alpha = 0.6f),
                 shape = RoundedCornerShape(8.dp)
             )
     ) {
@@ -784,15 +836,15 @@ fun TimelineClipItem(
             verticalAlignment = Alignment.CenterVertically
         ) {
             // =============================================================
-            // ACTION 4: LEFT HANDLE (WHITE/GRAY ROUNDED PILL) = TRIM START
+            // ACTION 1: LEFT HANDLE = TRIM START (ONE-FINGER DRAG)
             // =============================================================
             if (isSelected) {
                 Box(
                     modifier = Modifier
-                        .width(24.dp)
+                        .width(26.dp)
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp))
-                        .background(HandleWhite)
+                        .background(QuranGold)
                         .pointerInput(id, dpPerMs) {
                             detectDragGestures(
                                 onDragStart = { onDragStart() },
@@ -814,10 +866,20 @@ fun TimelineClipItem(
                         fontWeight = FontWeight.Bold
                     )
                 }
+            } else {
+                // Clear left edge indicator
+                Box(
+                    modifier = Modifier
+                        .width(2.5.dp)
+                        .fillMaxHeight()
+                        .background(accentColor.copy(alpha = 0.8f))
+                )
             }
 
             // =============================================================
-            // ACTION 3: CENTER CLIP BODY = MOVE THE WHOLE CLIP & TAP SELECT
+            // ACTION 2: CENTER CLIP BODY = TOUCH & HOLD TO MOVE CLIP
+            // Single tap selects; touch & hold (long press) drags clip left/right;
+            // Quick horizontal swipe passes through to timeline scroll!
             // =============================================================
             Box(
                 modifier = Modifier
@@ -825,17 +887,26 @@ fun TimelineClipItem(
                     .fillMaxHeight()
                     .clickable { onSelect() }
                     .pointerInput(id, dpPerMs) {
-                        detectDragGestures(
-                            onDragStart = { onDragStart() },
-                            onDragEnd = { onDragEnd() },
-                            onDragCancel = { onDragEnd() }
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = {
+                                isDraggingClip = true
+                                onDragStart()
+                            },
+                            onDragEnd = {
+                                isDraggingClip = false
+                                onDragEnd()
+                            },
+                            onDragCancel = {
+                                isDraggingClip = false
+                                onDragEnd()
+                            }
                         ) { change, dragAmount ->
                             change.consume()
                             val deltaMs = (with(density) { dragAmount.x.toDp() }.value / dpPerMs).toLong()
                             onMove(deltaMs)
                         }
                     }
-                    .padding(horizontal = 6.dp),
+                    .padding(horizontal = 4.dp),
                 contentAlignment = Alignment.CenterStart
             ) {
                 Row(
@@ -853,7 +924,7 @@ fun TimelineClipItem(
 
                     Text(
                         text = title,
-                        color = if (isSelected) QuranGold else TextWhite,
+                        color = if (isSelected || isDraggingClip) QuranGold else TextWhite,
                         fontSize = 10.5.sp,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
@@ -862,23 +933,39 @@ fun TimelineClipItem(
 
                     Text(
                         text = "${String.format("%.1f", durationMs / 1000f)}s",
-                        color = TextGray,
+                        color = if (isDraggingClip) QuranGold else TextGray,
                         fontSize = 8.5.sp,
                         fontFamily = FontFamily.Monospace
                     )
+
+                    if (isDraggingClip) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(QuranGold)
+                                .padding(horizontal = 3.dp, vertical = 1.dp)
+                        ) {
+                            Text(
+                                text = "⏱ ${String.format("%.1fs", startTimeMs / 1000f)}",
+                                color = TextDark,
+                                fontSize = 7.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
                 }
             }
 
             // =============================================================
-            // ACTION 4: RIGHT HANDLE (WHITE/GRAY ROUNDED PILL) = TRIM END
+            // ACTION 3: RIGHT HANDLE = TRIM END (ONE-FINGER DRAG)
             // =============================================================
             if (isSelected) {
                 Box(
                     modifier = Modifier
-                        .width(24.dp)
+                        .width(26.dp)
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(topEnd = 8.dp, bottomEnd = 8.dp))
-                        .background(HandleWhite)
+                        .background(QuranGold)
                         .pointerInput(id, dpPerMs) {
                             detectDragGestures(
                                 onDragStart = { onDragStart() },
@@ -900,6 +987,14 @@ fun TimelineClipItem(
                         fontWeight = FontWeight.Bold
                     )
                 }
+            } else {
+                // Clear right edge indicator
+                Box(
+                    modifier = Modifier
+                        .width(2.5.dp)
+                        .fillMaxHeight()
+                        .background(accentColor.copy(alpha = 0.8f))
+                )
             }
         }
     }

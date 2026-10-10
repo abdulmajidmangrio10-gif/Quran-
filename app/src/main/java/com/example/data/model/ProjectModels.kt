@@ -71,6 +71,9 @@ data class VideoClipConfig(
     val isMuted: Boolean = false,
     val isFlipped: Boolean = false,
     val rotation: Float = 0f,
+    val scale: Float = 1.0f,
+    val offsetX: Float = 0f,
+    val offsetY: Float = 0f,
     val brightness: Float = 15f,
     val contrast: Float = 0f,
     val saturation: Float = 0f,
@@ -156,9 +159,14 @@ data class VideoTimelineClip(
     val isBlank: Boolean = false,
     val startTimeMs: Long = 0L,
     val durationMs: Long = 10000L,
+    val trimStartMs: Long = 0L,
+    val sourceDurationMs: Long = 60000L,
     val volume: Float = 1.0f,
     val isMuted: Boolean = false,
-    val speed: Float = 1.0f
+    val speed: Float = 1.0f,
+    val scale: Float = 1.0f,
+    val offsetX: Float = 0f,
+    val offsetY: Float = 0f
 )
 
 data class ImageClip(

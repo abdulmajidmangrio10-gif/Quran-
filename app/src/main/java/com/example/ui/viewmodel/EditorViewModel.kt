@@ -638,7 +638,12 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
     // Timeline Zoom Control
     fun setTimelineZoom(zoom: Float) {
-        _timelineZoom.value = zoom.coerceIn(0.5f, 3.5f)
+        _timelineZoom.value = zoom.coerceIn(0.4f, 4.0f)
+    }
+
+    fun onTimelinePinchZoom(zoomMultiplier: Float) {
+        val newZoom = (_timelineZoom.value * zoomMultiplier).coerceIn(0.4f, 4.0f)
+        _timelineZoom.value = newZoom
     }
 
     fun zoomInTimeline() {
@@ -647,6 +652,42 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
     fun zoomOutTimeline() {
         setTimelineZoom(_timelineZoom.value - 0.35f)
+    }
+
+    // Video Preview Zoom / Resize / Pan
+    fun updateVideoTransform(scale: Float, offsetX: Float, offsetY: Float) {
+        val boundedScale = scale.coerceIn(1.0f, 5.0f)
+        val updatedConfig = _currentProject.value.videoConfig.copy(
+            scale = boundedScale,
+            offsetX = offsetX,
+            offsetY = offsetY
+        )
+        val selId = _selectedClipId.value
+        val updatedClips = _currentProject.value.videoClips.map { clip ->
+            if (selId == null || clip.id == selId) {
+                clip.copy(scale = boundedScale, offsetX = offsetX, offsetY = offsetY)
+            } else clip
+        }
+        _currentProject.value = _currentProject.value.copy(
+            videoConfig = updatedConfig,
+            videoClips = updatedClips
+        )
+    }
+
+    fun saveVideoTransform() {
+        saveCurrentProject()
+    }
+
+    fun resetVideoZoom() {
+        pushSnapshot()
+        updateVideoTransform(scale = 1.0f, offsetX = 0f, offsetY = 0f)
+        saveCurrentProject()
+    }
+
+    fun fitVideoToCanvas() {
+        pushSnapshot()
+        updateVideoTransform(scale = 1.0f, offsetX = 0f, offsetY = 0f)
+        saveCurrentProject()
     }
 
     // =====================================================================
@@ -767,10 +808,18 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             TrackType.VIDEO -> {
                 val list = _currentProject.value.videoClips.map { clip ->
                     if (clip.id == clipId) {
-                        val currentEnd = clip.startTimeMs + clip.durationMs
-                        val newStart = (clip.startTimeMs + deltaMs).coerceIn(0L, currentEnd - 500L)
-                        val newDur = (currentEnd - newStart).coerceAtLeast(500L)
-                        clip.copy(startTimeMs = newStart, durationMs = newDur)
+                        val maxTrim = clip.sourceDurationMs - 500L
+                        val newTrimStart = (clip.trimStartMs + deltaMs).coerceIn(0L, maxTrim)
+                        val trimDiff = newTrimStart - clip.trimStartMs
+                        val newDur = (clip.durationMs - trimDiff).coerceIn(500L, clip.sourceDurationMs - newTrimStart)
+                        // Timeline start position startTimeMs is NOT changed accidentally while trimming
+                        val updated = clip.copy(
+                            trimStartMs = newTrimStart,
+                            durationMs = newDur
+                        )
+                        // Synchronize preview to the trimmed start frame
+                        seekTo(updated.startTimeMs)
+                        updated
                     } else clip
                 }
                 _currentProject.value = _currentProject.value.copy(videoClips = list)
@@ -828,8 +877,12 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             TrackType.VIDEO -> {
                 val list = _currentProject.value.videoClips.map { clip ->
                     if (clip.id == clipId) {
-                        val newDur = (clip.durationMs + deltaMs).coerceAtLeast(500L)
-                        clip.copy(durationMs = newDur)
+                        val maxDur = (clip.sourceDurationMs - clip.trimStartMs).coerceAtLeast(500L)
+                        val newDur = (clip.durationMs + deltaMs).coerceIn(500L, maxDur)
+                        val updated = clip.copy(durationMs = newDur)
+                        // Synchronize preview to the trimmed end frame
+                        seekTo(updated.startTimeMs + updated.durationMs)
+                        updated
                     } else clip
                 }
                 _currentProject.value = _currentProject.value.copy(videoClips = list)
@@ -880,6 +933,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                 val list = _currentProject.value.videoClips.map { clip ->
                     if (clip.id == clipId) {
                         val newStart = (clip.startTimeMs + deltaMs).coerceAtLeast(0L)
+                        seekTo(newStart)
                         clip.copy(startTimeMs = newStart)
                     } else clip
                 }
@@ -943,6 +997,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                         val clip2 = clip.copy(
                             id = UUID.randomUUID().toString(),
                             startTimeMs = playhead,
+                            trimStartMs = clip.trimStartMs + offset,
                             durationMs = clip.durationMs - offset
                         )
                         val newList = clips.toMutableList().apply {
@@ -1063,7 +1118,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             name = "Blank Canvas",
             isBlank = true,
             startTimeMs = playhead,
-            durationMs = durationMs
+            durationMs = durationMs,
+            trimStartMs = 0L,
+            sourceDurationMs = durationMs
         )
         val list = _currentProject.value.videoClips + newClip
         val newTotalDuration = maxOf(_currentProject.value.durationMs, playhead + durationMs + 5000L)
@@ -1108,7 +1165,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                 name = "Video Clip",
                 isBlank = false,
                 startTimeMs = playhead,
-                durationMs = mediaDurationMs
+                durationMs = mediaDurationMs,
+                trimStartMs = 0L,
+                sourceDurationMs = mediaDurationMs
             )
             val list = _currentProject.value.videoClips + newClip
             val newTotalDuration = maxOf(_currentProject.value.durationMs, playhead + mediaDurationMs + 5000L)
