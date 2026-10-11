@@ -535,6 +535,13 @@ fun TimelineTimeRuler(
                     onSeek(seekMs)
                 }
             }
+            .pointerInput(dpPerMs, totalDurationMs) {
+                detectDragGestures { change, _ ->
+                    change.consume()
+                    val seekMs = (with(density) { change.position.x.toDp() }.value / dpPerMs).toLong().coerceIn(0L, totalDurationMs)
+                    onSeek(seekMs)
+                }
+            }
     ) {
         for (s in 0..totalSec step stepSec) {
             val offsetDp = (s * 1000 * dpPerMs).dp
@@ -839,21 +846,38 @@ fun TimelineClipItem(
             // ACTION 1: LEFT HANDLE = TRIM START (ONE-FINGER DRAG)
             // =============================================================
             if (isSelected) {
+                var accumulatedLeftTrimPx by remember { mutableFloatStateOf(0f) }
                 Box(
                     modifier = Modifier
-                        .width(26.dp)
+                        .width(28.dp)
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp))
                         .background(QuranGold)
                         .pointerInput(id, dpPerMs) {
                             detectDragGestures(
-                                onDragStart = { onDragStart() },
-                                onDragEnd = { onDragEnd() },
-                                onDragCancel = { onDragEnd() }
+                                onDragStart = {
+                                    accumulatedLeftTrimPx = 0f
+                                    onDragStart()
+                                },
+                                onDragEnd = {
+                                    accumulatedLeftTrimPx = 0f
+                                    onDragEnd()
+                                },
+                                onDragCancel = {
+                                    accumulatedLeftTrimPx = 0f
+                                    onDragEnd()
+                                }
                             ) { change, dragAmount ->
                                 change.consume()
-                                val deltaMs = (with(density) { dragAmount.x.toDp() }.value / dpPerMs).toLong()
-                                onTrimStart(deltaMs)
+                                accumulatedLeftTrimPx += dragAmount.x
+                                val pxPerMs = density.density * dpPerMs
+                                if (pxPerMs > 0.0001f) {
+                                    val deltaMs = (accumulatedLeftTrimPx / pxPerMs).toLong()
+                                    if (deltaMs != 0L) {
+                                        onTrimStart(deltaMs)
+                                        accumulatedLeftTrimPx -= deltaMs * pxPerMs
+                                    }
+                                }
                             }
                         }
                         .testTag("left_handle_$id"),
@@ -877,33 +901,58 @@ fun TimelineClipItem(
             }
 
             // =============================================================
-            // ACTION 2: CENTER CLIP BODY = TOUCH & HOLD TO MOVE CLIP
-            // Single tap selects; touch & hold (long press) drags clip left/right;
-            // Quick horizontal swipe passes through to timeline scroll!
+            // ACTION 2: CENTER CLIP BODY = TOUCH & HOLD / DRAG TO MOVE CLIP
+            // Single tap selects; dragging moves clip smoothly left/right!
             // =============================================================
+            var accumulatedBodyDragPx by remember { mutableFloatStateOf(0f) }
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight()
-                    .clickable { onSelect() }
                     .pointerInput(id, dpPerMs) {
-                        detectDragGesturesAfterLongPress(
-                            onDragStart = {
-                                isDraggingClip = true
-                                onDragStart()
-                            },
-                            onDragEnd = {
-                                isDraggingClip = false
-                                onDragEnd()
-                            },
-                            onDragCancel = {
-                                isDraggingClip = false
-                                onDragEnd()
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            val downId = down.id
+                            var isDragStarted = false
+                            accumulatedBodyDragPx = 0f
+                            val touchSlop = viewConfiguration.touchSlop
+                            var totalDistance = 0f
+
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.find { it.id == downId } ?: break
+                                if (!change.pressed) {
+                                    if (isDragStarted) {
+                                        isDraggingClip = false
+                                        accumulatedBodyDragPx = 0f
+                                        onDragEnd()
+                                    } else if (totalDistance < touchSlop) {
+                                        onSelect()
+                                    }
+                                    break
+                                }
+                                val dragX = change.position.x - change.previousPosition.x
+                                totalDistance += Math.abs(dragX)
+                                if (!isDragStarted && totalDistance > touchSlop) {
+                                    isDragStarted = true
+                                    isDraggingClip = true
+                                    accumulatedBodyDragPx = 0f
+                                    onSelect()
+                                    onDragStart()
+                                }
+                                if (isDragStarted) {
+                                    change.consume()
+                                    accumulatedBodyDragPx += dragX
+                                    val pxPerMs = density.density * dpPerMs
+                                    if (pxPerMs > 0.0001f) {
+                                        val deltaMs = (accumulatedBodyDragPx / pxPerMs).toLong()
+                                        if (deltaMs != 0L) {
+                                            onMove(deltaMs)
+                                            accumulatedBodyDragPx -= deltaMs * pxPerMs
+                                        }
+                                    }
+                                }
                             }
-                        ) { change, dragAmount ->
-                            change.consume()
-                            val deltaMs = (with(density) { dragAmount.x.toDp() }.value / dpPerMs).toLong()
-                            onMove(deltaMs)
                         }
                     }
                     .padding(horizontal = 4.dp),
@@ -960,21 +1009,38 @@ fun TimelineClipItem(
             // ACTION 3: RIGHT HANDLE = TRIM END (ONE-FINGER DRAG)
             // =============================================================
             if (isSelected) {
+                var accumulatedRightTrimPx by remember { mutableFloatStateOf(0f) }
                 Box(
                     modifier = Modifier
-                        .width(26.dp)
+                        .width(28.dp)
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(topEnd = 8.dp, bottomEnd = 8.dp))
                         .background(QuranGold)
                         .pointerInput(id, dpPerMs) {
                             detectDragGestures(
-                                onDragStart = { onDragStart() },
-                                onDragEnd = { onDragEnd() },
-                                onDragCancel = { onDragEnd() }
+                                onDragStart = {
+                                    accumulatedRightTrimPx = 0f
+                                    onDragStart()
+                                },
+                                onDragEnd = {
+                                    accumulatedRightTrimPx = 0f
+                                    onDragEnd()
+                                },
+                                onDragCancel = {
+                                    accumulatedRightTrimPx = 0f
+                                    onDragEnd()
+                                }
                             ) { change, dragAmount ->
                                 change.consume()
-                                val deltaMs = (with(density) { dragAmount.x.toDp() }.value / dpPerMs).toLong()
-                                onTrimEnd(deltaMs)
+                                accumulatedRightTrimPx += dragAmount.x
+                                val pxPerMs = density.density * dpPerMs
+                                if (pxPerMs > 0.0001f) {
+                                    val deltaMs = (accumulatedRightTrimPx / pxPerMs).toLong()
+                                    if (deltaMs != 0L) {
+                                        onTrimEnd(deltaMs)
+                                        accumulatedRightTrimPx -= deltaMs * pxPerMs
+                                    }
+                                }
                             }
                         }
                         .testTag("right_handle_$id"),

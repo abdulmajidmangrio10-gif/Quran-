@@ -150,7 +150,6 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     // Clean Toolbar Features
     private val _toolbarFeatures = MutableStateFlow(
         listOf(
-            ToolbarFeatureItem("timeline", "Timeline"),
             ToolbarFeatureItem("quran", "Quran"),
             ToolbarFeatureItem("text", "Text"),
             ToolbarFeatureItem("canvas", "Canvas"),
@@ -191,7 +190,6 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
     fun resetToolbarFeatures() {
         _toolbarFeatures.value = listOf(
-            ToolbarFeatureItem("timeline", "Timeline"),
             ToolbarFeatureItem("quran", "Quran"),
             ToolbarFeatureItem("text", "Text"),
             ToolbarFeatureItem("canvas", "Canvas"),
@@ -449,9 +447,11 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         val initialVideoClip = com.example.data.model.VideoTimelineClip(
             id = UUID.randomUUID().toString(),
             uri = uri.toString(),
-            name = title ?: "Video 1",
+            name = title ?: "Project ${projects.value.size + 1}",
             startTimeMs = 0L,
-            durationMs = videoDurationMs
+            durationMs = videoDurationMs,
+            sourceDurationMs = videoDurationMs,
+            trimStartMs = 0L
         )
         val newProj = EditingProject(
             id = UUID.randomUUID().toString(),
@@ -491,7 +491,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                         uri = project.videoUri,
                         name = project.title,
                         startTimeMs = 0L,
-                        durationMs = project.durationMs
+                        durationMs = project.durationMs,
+                        sourceDurationMs = project.durationMs,
+                        trimStartMs = 0L
                     )
                 )
             )
@@ -674,6 +676,10 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         )
     }
 
+    fun onVideoTransformStarted() {
+        pushSnapshot()
+    }
+
     fun saveVideoTransform() {
         saveCurrentProject()
     }
@@ -800,7 +806,174 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun onDragGestureEnded() {
+        recalculateProjectDuration()
         saveCurrentProject()
+    }
+
+    fun recalculateProjectDuration() {
+        val proj = _currentProject.value
+        val maxVideo = proj.videoClips.maxOfOrNull { it.startTimeMs + it.durationMs } ?: 0L
+        val maxQuran = proj.quranClips.maxOfOrNull { it.startTimeMs + it.durationMs } ?: 0L
+        val maxText = proj.textClips.maxOfOrNull { it.startTimeMs + it.durationMs } ?: 0L
+        val maxAudio = proj.audioClips.maxOfOrNull { it.startTimeMs + it.durationMs } ?: 0L
+        val maxImage = proj.imageClips.maxOfOrNull { it.startTimeMs + it.durationMs } ?: 0L
+        val calculatedMax = maxOf(maxVideo, maxQuran, maxText, maxAudio, maxImage).coerceAtLeast(1000L)
+        if (proj.durationMs != calculatedMax) {
+            _currentProject.value = proj.copy(durationMs = calculatedMax)
+        }
+    }
+
+    fun onMediaMetadataLoaded(realDurationMs: Long) {
+        if (realDurationMs <= 1000L) return
+        val proj = _currentProject.value
+        val updatedVideoClips = proj.videoClips.map { clip ->
+            if (clip.sourceDurationMs != realDurationMs && !clip.isBlank) {
+                val untrimmed = clip.durationMs == clip.sourceDurationMs || clip.durationMs == 60000L || clip.durationMs == 10000L
+                val newDur = if (untrimmed) realDurationMs else clip.durationMs.coerceAtMost(realDurationMs)
+                clip.copy(sourceDurationMs = realDurationMs, durationMs = newDur)
+            } else clip
+        }
+        val calculatedMax = updatedVideoClips.maxOfOrNull { it.startTimeMs + it.durationMs } ?: realDurationMs
+        _currentProject.value = proj.copy(
+            videoClips = updatedVideoClips,
+            durationMs = calculatedMax
+        )
+    }
+
+    fun setClipStartTime(track: TrackType, clipId: String, newStartTimeMs: Long) {
+        val safeStart = newStartTimeMs.coerceAtLeast(0L)
+        when (track) {
+            TrackType.VIDEO -> {
+                val list = _currentProject.value.videoClips.map { clip ->
+                    if (clip.id == clipId) {
+                        clip.copy(startTimeMs = safeStart)
+                    } else clip
+                }
+                _currentProject.value = _currentProject.value.copy(videoClips = list)
+                seekTo(safeStart)
+                recalculateProjectDuration()
+            }
+            TrackType.QURAN -> {
+                val list = _currentProject.value.quranClips.map { clip ->
+                    if (clip.id == clipId) clip.copy(startTimeMs = safeStart) else clip
+                }
+                _currentProject.value = _currentProject.value.copy(quranClips = list)
+                recalculateProjectDuration()
+            }
+            TrackType.TEXT -> {
+                val list = _currentProject.value.textClips.map { clip ->
+                    if (clip.id == clipId) clip.copy(startTimeMs = safeStart) else clip
+                }
+                _currentProject.value = _currentProject.value.copy(textClips = list)
+                recalculateProjectDuration()
+            }
+            TrackType.AUDIO -> {
+                val list = _currentProject.value.audioClips.map { clip ->
+                    if (clip.id == clipId) clip.copy(startTimeMs = safeStart) else clip
+                }
+                _currentProject.value = _currentProject.value.copy(audioClips = list)
+                recalculateProjectDuration()
+            }
+            TrackType.IMAGE -> {
+                val list = _currentProject.value.imageClips.map { clip ->
+                    if (clip.id == clipId) clip.copy(startTimeMs = safeStart) else clip
+                }
+                _currentProject.value = _currentProject.value.copy(imageClips = list)
+                recalculateProjectDuration()
+            }
+            else -> {}
+        }
+    }
+
+    fun setClipTrimStart(track: TrackType, clipId: String, initialTrimStart: Long, initialDur: Long, deltaMs: Long) {
+        when (track) {
+            TrackType.VIDEO -> {
+                val list = _currentProject.value.videoClips.map { clip ->
+                    if (clip.id == clipId) {
+                        val maxTrim = clip.sourceDurationMs - 500L
+                        val newTrimStart = (initialTrimStart + deltaMs).coerceIn(0L, maxTrim)
+                        val trimDiff = newTrimStart - initialTrimStart
+                        val newDur = (initialDur - trimDiff).coerceIn(500L, clip.sourceDurationMs - newTrimStart)
+                        val updated = clip.copy(trimStartMs = newTrimStart, durationMs = newDur)
+                        seekTo(updated.startTimeMs)
+                        updated
+                    } else clip
+                }
+                _currentProject.value = _currentProject.value.copy(videoClips = list)
+                recalculateProjectDuration()
+            }
+            else -> {
+                val list = _currentProject.value.quranClips.map { clip ->
+                    if (clip.id == clipId) {
+                        val currentEnd = clip.startTimeMs + initialDur
+                        val newStart = (clip.startTimeMs + deltaMs).coerceIn(0L, currentEnd - 500L)
+                        val newDur = (currentEnd - newStart).coerceAtLeast(500L)
+                        clip.copy(startTimeMs = newStart, durationMs = newDur)
+                    } else clip
+                }
+                _currentProject.value = _currentProject.value.copy(quranClips = list)
+                recalculateProjectDuration()
+            }
+        }
+    }
+
+    fun setClipTrimEnd(track: TrackType, clipId: String, initialDur: Long, deltaMs: Long) {
+        when (track) {
+            TrackType.VIDEO -> {
+                val list = _currentProject.value.videoClips.map { clip ->
+                    if (clip.id == clipId) {
+                        val maxDur = (clip.sourceDurationMs - clip.trimStartMs).coerceAtLeast(500L)
+                        val newDur = (initialDur + deltaMs).coerceIn(500L, maxDur)
+                        val updated = clip.copy(durationMs = newDur)
+                        seekTo(updated.startTimeMs + updated.durationMs)
+                        updated
+                    } else clip
+                }
+                _currentProject.value = _currentProject.value.copy(videoClips = list)
+                recalculateProjectDuration()
+            }
+            TrackType.QURAN -> {
+                val list = _currentProject.value.quranClips.map { clip ->
+                    if (clip.id == clipId) {
+                        val newDur = (initialDur + deltaMs).coerceAtLeast(500L)
+                        clip.copy(durationMs = newDur)
+                    } else clip
+                }
+                _currentProject.value = _currentProject.value.copy(quranClips = list)
+                recalculateProjectDuration()
+            }
+            TrackType.TEXT -> {
+                val list = _currentProject.value.textClips.map { clip ->
+                    if (clip.id == clipId) {
+                        val newDur = (initialDur + deltaMs).coerceAtLeast(500L)
+                        clip.copy(durationMs = newDur)
+                    } else clip
+                }
+                _currentProject.value = _currentProject.value.copy(textClips = list)
+                recalculateProjectDuration()
+            }
+            TrackType.AUDIO -> {
+                val list = _currentProject.value.audioClips.map { clip ->
+                    if (clip.id == clipId) {
+                        val newDur = (initialDur + deltaMs).coerceAtLeast(500L)
+                        clip.copy(durationMs = newDur)
+                    } else clip
+                }
+                _currentProject.value = _currentProject.value.copy(audioClips = list)
+                recalculateProjectDuration()
+            }
+            TrackType.IMAGE -> {
+                val list = _currentProject.value.imageClips.map { clip ->
+                    if (clip.id == clipId) {
+                        val newDur = (initialDur + deltaMs).coerceAtLeast(500L)
+                        clip.copy(durationMs = newDur)
+                    } else clip
+                }
+                _currentProject.value = _currentProject.value.copy(imageClips = list)
+                recalculateProjectDuration()
+            }
+            else -> {}
+        }
     }
 
     fun trimClipStart(track: TrackType, clipId: String, deltaMs: Long) {

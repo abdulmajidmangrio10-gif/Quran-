@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.shape.CircleShape
@@ -532,34 +534,10 @@ fun EditorToolbarRow(
             .height(58.dp)
             .background(DarkCard)
             .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 8.dp, vertical = 2.dp),
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
+            .padding(horizontal = 12.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Timeline Tab Item (to return back to timeline anytime)
-        Column(
-            modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .clickable { onToolClick("timeline") }
-                .padding(horizontal = 6.dp, vertical = 3.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Icon(
-                imageVector = Icons.Default.Movie,
-                contentDescription = "Timeline",
-                tint = if (activeTool == BottomToolType.TIMELINE) QuranGold else TextWhite,
-                modifier = Modifier.size(20.dp)
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = "Timeline",
-                color = if (activeTool == BottomToolType.TIMELINE) QuranGold else TextWhite,
-                fontSize = 9.sp,
-                fontWeight = if (activeTool == BottomToolType.TIMELINE) FontWeight.Bold else FontWeight.Medium
-            )
-        }
-
         visibleFeatures.forEach { item ->
             val isCurrentActive = when (item.id) {
                 "quran" -> activeTool == BottomToolType.QURAN
@@ -659,20 +637,56 @@ fun VideoPreviewCard(
                     .clip(RoundedCornerShape(8.dp))
                     .background(Color.Black)
                     .pointerInput(currentVideoClip?.id) {
-                        detectTransformGestures { _, pan, zoom, _ ->
-                            val oldScale = currentVideoClip?.scale ?: cfg.scale
-                            val oldX = currentVideoClip?.offsetX ?: cfg.offsetX
-                            val oldY = currentVideoClip?.offsetY ?: cfg.offsetY
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            viewModel.onVideoTransformStarted()
+                            do {
+                                val event = awaitPointerEvent()
+                                val pressedPointers = event.changes.filter { it.pressed }
+                                if (pressedPointers.size >= 2) {
+                                    val p1 = pressedPointers[0]
+                                    val p2 = pressedPointers[1]
+                                    val currentDistance = (p1.position - p2.position).getDistance()
+                                    val prevDistance = (p1.previousPosition - p2.previousPosition).getDistance()
+                                    val zoom = if (prevDistance > 0f) currentDistance / prevDistance else 1f
 
-                            val newScale = (oldScale * zoom).coerceIn(1.0f, 5.0f)
+                                    val currentCenter = (p1.position + p2.position) / 2f
+                                    val prevCenter = (p1.previousPosition + p2.previousPosition) / 2f
+                                    val pan = currentCenter - prevCenter
 
-                            val maxPanX = if (newScale > 1f) (size.width * (newScale - 1f) / 2f) else 0f
-                            val maxPanY = if (newScale > 1f) (size.height * (newScale - 1f) / 2f) else 0f
+                                    val oldScale = currentVideoClip?.scale ?: cfg.scale
+                                    val oldX = currentVideoClip?.offsetX ?: cfg.offsetX
+                                    val oldY = currentVideoClip?.offsetY ?: cfg.offsetY
 
-                            val newX = if (maxPanX > 0f) (oldX + pan.x).coerceIn(-maxPanX, maxPanX) else 0f
-                            val newY = if (maxPanY > 0f) (oldY + pan.y).coerceIn(-maxPanY, maxPanY) else 0f
+                                    val newScale = (oldScale * zoom).coerceIn(1.0f, 5.0f)
+                                    val maxPanX = if (newScale > 1f) (size.width * (newScale - 1f) / 2f) else 0f
+                                    val maxPanY = if (newScale > 1f) (size.height * (newScale - 1f) / 2f) else 0f
 
-                            viewModel.updateVideoTransform(newScale, newX, newY)
+                                    val newX = if (maxPanX > 0f) (oldX + pan.x).coerceIn(-maxPanX, maxPanX) else 0f
+                                    val newY = if (maxPanY > 0f) (oldY + pan.y).coerceIn(-maxPanY, maxPanY) else 0f
+
+                                    viewModel.updateVideoTransform(newScale, newX, newY)
+                                    event.changes.forEach { it.consume() }
+                                } else if (pressedPointers.size == 1) {
+                                    val p = pressedPointers[0]
+                                    val pan = p.position - p.previousPosition
+                                    val currentScale = currentVideoClip?.scale ?: cfg.scale
+                                    if (currentScale > 1.01f) {
+                                        val oldX = currentVideoClip?.offsetX ?: cfg.offsetX
+                                        val oldY = currentVideoClip?.offsetY ?: cfg.offsetY
+
+                                        val maxPanX = (size.width * (currentScale - 1f) / 2f)
+                                        val maxPanY = (size.height * (currentScale - 1f) / 2f)
+
+                                        val newX = (oldX + pan.x).coerceIn(-maxPanX, maxPanX)
+                                        val newY = (oldY + pan.y).coerceIn(-maxPanY, maxPanY)
+
+                                        viewModel.updateVideoTransform(currentScale, newX, newY)
+                                        p.consume()
+                                    }
+                                }
+                            } while (event.changes.any { it.pressed })
+                            viewModel.saveVideoTransform()
                         }
                     },
                 contentAlignment = Alignment.Center
@@ -709,6 +723,10 @@ fun VideoPreviewCard(
                                         setOnPreparedListener { mp ->
                                             videoPlayerRef = mp
                                             mp.isLooping = false
+                                            val realDur = mp.duration.toLong()
+                                            if (realDur > 1000L) {
+                                                viewModel.onMediaMetadataLoaded(realDur)
+                                            }
                                             val v = if (isVideoMuted) 0f else (currentVideoClip?.volume ?: 1f).coerceIn(0f, 1f)
                                             mp.setVolume(v, v)
                                             try {
