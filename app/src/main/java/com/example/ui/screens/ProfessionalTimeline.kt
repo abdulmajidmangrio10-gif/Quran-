@@ -53,11 +53,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -434,36 +436,85 @@ fun ProfessionalTimelineView(
                                 }
                             }
 
-                            // 3. VERTICAL RED PLAYHEAD passing through all tracks
+                            // 3. VERTICAL RED PLAYHEAD SCRUBBER passing through all tracks
                             val playheadOffsetDp = (currentPlayheadMs * dpPerMs).dp
+                            val currentPlayheadState by rememberUpdatedState(currentPlayheadMs)
+                            val totalDurationState by rememberUpdatedState(totalDurationMs)
+                            val dpPerMsState by rememberUpdatedState(dpPerMs)
+                            var isPlayheadDragging by remember { mutableStateOf(false) }
+
                             Box(
                                 modifier = Modifier
                                     .fillMaxHeight()
-                                    .offset(x = playheadOffsetDp - 8.dp)
-                                    .width(18.dp)
-                                    .pointerInput(dpPerMs) {
-                                        detectDragGestures { change, dragAmount ->
+                                    .offset(x = playheadOffsetDp - 22.dp)
+                                    .width(44.dp)
+                                    .pointerInput(Unit) {
+                                        detectDragGestures(
+                                            onDragStart = {
+                                                isPlayheadDragging = true
+                                            },
+                                            onDragEnd = {
+                                                isPlayheadDragging = false
+                                            },
+                                            onDragCancel = {
+                                                isPlayheadDragging = false
+                                            }
+                                        ) { change, dragAmount ->
                                             change.consume()
-                                            val deltaMs = (with(density) { dragAmount.x.toDp() }.value / dpPerMs).toLong()
-                                            viewModel.seekTo(currentPlayheadMs + deltaMs)
+                                            val pxPerMs = density.density * dpPerMsState
+                                            if (pxPerMs > 0.0001f) {
+                                                val deltaMs = (dragAmount.x / pxPerMs).toLong()
+                                                val newMs = (currentPlayheadState + deltaMs).coerceIn(0L, totalDurationState)
+                                                viewModel.seekTo(newMs)
+                                            }
                                         }
-                                    },
+                                    }
+                                    .testTag("timeline_playhead_scrubber"),
                                 contentAlignment = Alignment.TopCenter
                             ) {
-                                // Top Red Circular / Teardrop Badge
+                                // Floating live time badge when scrubbing
+                                if (isPlayheadDragging) {
+                                    Box(
+                                        modifier = Modifier
+                                            .offset(y = (-20).dp)
+                                            .shadow(4.dp, RoundedCornerShape(6.dp))
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(PinkButtonColor)
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        val sec = currentPlayheadMs / 1000f
+                                        Text(
+                                            text = String.format("%02d:%04.1f", (sec / 60).toInt(), sec % 60),
+                                            color = Color.White,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                    }
+                                }
+
+                                // Top Red Circular / Teardrop Badge with White Accent
                                 Box(
                                     modifier = Modifier
-                                        .size(14.dp)
-                                        .shadow(3.dp, CircleShape)
+                                        .size(16.dp)
+                                        .shadow(4.dp, CircleShape)
                                         .clip(CircleShape)
                                         .background(PinkButtonColor)
-                                        .border(1.5.dp, Color.White, CircleShape)
-                                )
+                                        .border(2.dp, Color.White, CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(5.dp)
+                                            .clip(CircleShape)
+                                            .background(Color.White)
+                                    )
+                                }
 
-                                // Vertical Red Line
+                                // Vertical Red/Pink Line
                                 Box(
                                     modifier = Modifier
-                                        .width(2.5.dp)
+                                        .width(3.dp)
                                         .fillMaxHeight()
                                         .background(PinkButtonColor)
                                 )
@@ -524,23 +575,32 @@ fun TimelineTimeRuler(
     val stepSec = if (dpPerMs > 0.06f) 1 else 2
     val totalSec = (totalDurationMs / 1000).toInt() + 10
 
+    val totalDurationState by rememberUpdatedState(totalDurationMs)
+    val dpPerMsState by rememberUpdatedState(dpPerMs)
+
     Box(
         modifier = Modifier
             .width(timelineWidthDp)
-            .height(20.dp)
+            .height(24.dp)
             .padding(horizontal = 4.dp)
-            .pointerInput(dpPerMs, totalDurationMs) {
-                detectTapGestures { offset ->
-                    val seekMs = (with(density) { offset.x.toDp() }.value / dpPerMs).toLong().coerceIn(0L, totalDurationMs)
-                    onSeek(seekMs)
-                }
-            }
-            .pointerInput(dpPerMs, totalDurationMs) {
-                detectDragGestures { change, _ ->
-                    change.consume()
-                    val seekMs = (with(density) { change.position.x.toDp() }.value / dpPerMs).toLong().coerceIn(0L, totalDurationMs)
-                    onSeek(seekMs)
-                }
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragStart = { offset ->
+                        val pxPerMs = density.density * dpPerMsState
+                        if (pxPerMs > 0.0001f) {
+                            val seekMs = (offset.x / pxPerMs).toLong().coerceIn(0L, totalDurationState)
+                            onSeek(seekMs)
+                        }
+                    },
+                    onDrag = { change, _ ->
+                        change.consume()
+                        val pxPerMs = density.density * dpPerMsState
+                        if (pxPerMs > 0.0001f) {
+                            val seekMs = (change.position.x / pxPerMs).toLong().coerceIn(0L, totalDurationState)
+                            onSeek(seekMs)
+                        }
+                    }
+                )
             }
     ) {
         for (s in 0..totalSec step stepSec) {
@@ -824,10 +884,15 @@ fun TimelineClipItem(
     val clipWidthDp = maxOf(40f, durationMs * dpPerMs).dp
     val clipOffsetDp = (startTimeMs * dpPerMs).dp
     var isDraggingClip by remember { mutableStateOf(false) }
+    var dragVisualOffsetPx by remember { mutableFloatStateOf(0f) }
+    val pxPerMs = density.density * dpPerMs
 
     Box(
         modifier = Modifier
             .offset(x = clipOffsetDp)
+            .graphicsLayer {
+                translationX = dragVisualOffsetPx
+            }
             .width(clipWidthDp)
             .fillMaxHeight()
             .clip(RoundedCornerShape(8.dp))
@@ -870,7 +935,6 @@ fun TimelineClipItem(
                             ) { change, dragAmount ->
                                 change.consume()
                                 accumulatedLeftTrimPx += dragAmount.x
-                                val pxPerMs = density.density * dpPerMs
                                 if (pxPerMs > 0.0001f) {
                                     val deltaMs = (accumulatedLeftTrimPx / pxPerMs).toLong()
                                     if (deltaMs != 0L) {
@@ -904,57 +968,40 @@ fun TimelineClipItem(
             // ACTION 2: CENTER CLIP BODY = TOUCH & HOLD / DRAG TO MOVE CLIP
             // Single tap selects; dragging moves clip smoothly left/right!
             // =============================================================
-            var accumulatedBodyDragPx by remember { mutableFloatStateOf(0f) }
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight()
-                    .pointerInput(id, dpPerMs) {
-                        awaitEachGesture {
-                            val down = awaitFirstDown(requireUnconsumed = false)
-                            val downId = down.id
-                            var isDragStarted = false
-                            accumulatedBodyDragPx = 0f
-                            val touchSlop = viewConfiguration.touchSlop
-                            var totalDistance = 0f
-
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                val change = event.changes.find { it.id == downId } ?: break
-                                if (!change.pressed) {
-                                    if (isDragStarted) {
-                                        isDraggingClip = false
-                                        accumulatedBodyDragPx = 0f
-                                        onDragEnd()
-                                    } else if (totalDistance < touchSlop) {
-                                        onSelect()
-                                    }
-                                    break
-                                }
-                                val dragX = change.position.x - change.previousPosition.x
-                                totalDistance += Math.abs(dragX)
-                                if (!isDragStarted && totalDistance > touchSlop) {
-                                    isDragStarted = true
-                                    isDraggingClip = true
-                                    accumulatedBodyDragPx = 0f
-                                    onSelect()
-                                    onDragStart()
-                                }
-                                if (isDragStarted) {
-                                    change.consume()
-                                    accumulatedBodyDragPx += dragX
-                                    val pxPerMs = density.density * dpPerMs
-                                    if (pxPerMs > 0.0001f) {
-                                        val deltaMs = (accumulatedBodyDragPx / pxPerMs).toLong()
-                                        if (deltaMs != 0L) {
-                                            onMove(deltaMs)
-                                            accumulatedBodyDragPx -= deltaMs * pxPerMs
-                                        }
+                    .pointerInput(id, dpPerMs, startTimeMs) {
+                        detectDragGestures(
+                            onDragStart = {
+                                isDraggingClip = true
+                                dragVisualOffsetPx = 0f
+                                onSelect()
+                                onDragStart()
+                            },
+                            onDragEnd = {
+                                isDraggingClip = false
+                                if (pxPerMs > 0.0001f) {
+                                    val deltaMs = (dragVisualOffsetPx / pxPerMs).toLong()
+                                    if (deltaMs != 0L) {
+                                        onMove(deltaMs)
                                     }
                                 }
+                                dragVisualOffsetPx = 0f
+                                onDragEnd()
+                            },
+                            onDragCancel = {
+                                isDraggingClip = false
+                                dragVisualOffsetPx = 0f
+                                onDragEnd()
                             }
+                        ) { change, dragAmount ->
+                            change.consume()
+                            dragVisualOffsetPx += dragAmount.x
                         }
                     }
+                    .clickable { onSelect() }
                     .padding(horizontal = 4.dp),
                 contentAlignment = Alignment.CenterStart
             ) {
@@ -988,6 +1035,8 @@ fun TimelineClipItem(
                     )
 
                     if (isDraggingClip) {
+                        val liveDeltaMs = if (pxPerMs > 0.0001f) (dragVisualOffsetPx / pxPerMs).toLong() else 0L
+                        val liveStartMs = (startTimeMs + liveDeltaMs).coerceAtLeast(0L)
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(4.dp))
@@ -995,7 +1044,7 @@ fun TimelineClipItem(
                                 .padding(horizontal = 3.dp, vertical = 1.dp)
                         ) {
                             Text(
-                                text = "⏱ ${String.format("%.1fs", startTimeMs / 1000f)}",
+                                text = "⏱ ${String.format("%.1fs", liveStartMs / 1000f)}",
                                 color = TextDark,
                                 fontSize = 7.5.sp,
                                 fontWeight = FontWeight.Bold

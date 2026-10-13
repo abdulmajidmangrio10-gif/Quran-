@@ -72,8 +72,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -630,63 +632,31 @@ fun VideoPreviewCard(
             contentAlignment = Alignment.Center
         ) {
             // Aspect-ratio-constrained video canvas
+            val currentScaleState by rememberUpdatedState(currentScale)
+            val currentOffsetXState by rememberUpdatedState(currentOffsetX)
+            val currentOffsetYState by rememberUpdatedState(currentOffsetY)
+            var videoPlayerRef by remember { mutableStateOf<android.media.MediaPlayer?>(null) }
+
             Box(
                 modifier = Modifier
                     .aspectRatio(targetAspect)
                     .fillMaxSize()
                     .clip(RoundedCornerShape(8.dp))
                     .background(Color.Black)
-                    .pointerInput(currentVideoClip?.id) {
-                        awaitEachGesture {
-                            awaitFirstDown(requireUnconsumed = false)
-                            viewModel.onVideoTransformStarted()
-                            do {
-                                val event = awaitPointerEvent()
-                                val pressedPointers = event.changes.filter { it.pressed }
-                                if (pressedPointers.size >= 2) {
-                                    val p1 = pressedPointers[0]
-                                    val p2 = pressedPointers[1]
-                                    val currentDistance = (p1.position - p2.position).getDistance()
-                                    val prevDistance = (p1.previousPosition - p2.previousPosition).getDistance()
-                                    val zoom = if (prevDistance > 0f) currentDistance / prevDistance else 1f
+                    .pointerInput(Unit) {
+                        detectTransformGestures { centroid, pan, zoom, rotation ->
+                            val oldScale = currentScaleState
+                            val oldX = currentOffsetXState
+                            val oldY = currentOffsetYState
 
-                                    val currentCenter = (p1.position + p2.position) / 2f
-                                    val prevCenter = (p1.previousPosition + p2.previousPosition) / 2f
-                                    val pan = currentCenter - prevCenter
+                            val newScale = (oldScale * zoom).coerceIn(1.0f, 5.0f)
+                            val maxPanX = if (newScale > 1.01f) (size.width * (newScale - 1f) / 2f) else 0f
+                            val maxPanY = if (newScale > 1.01f) (size.height * (newScale - 1f) / 2f) else 0f
 
-                                    val oldScale = currentVideoClip?.scale ?: cfg.scale
-                                    val oldX = currentVideoClip?.offsetX ?: cfg.offsetX
-                                    val oldY = currentVideoClip?.offsetY ?: cfg.offsetY
+                            val newX = if (maxPanX > 0f) (oldX + pan.x).coerceIn(-maxPanX, maxPanX) else 0f
+                            val newY = if (maxPanY > 0f) (oldY + pan.y).coerceIn(-maxPanY, maxPanY) else 0f
 
-                                    val newScale = (oldScale * zoom).coerceIn(1.0f, 5.0f)
-                                    val maxPanX = if (newScale > 1f) (size.width * (newScale - 1f) / 2f) else 0f
-                                    val maxPanY = if (newScale > 1f) (size.height * (newScale - 1f) / 2f) else 0f
-
-                                    val newX = if (maxPanX > 0f) (oldX + pan.x).coerceIn(-maxPanX, maxPanX) else 0f
-                                    val newY = if (maxPanY > 0f) (oldY + pan.y).coerceIn(-maxPanY, maxPanY) else 0f
-
-                                    viewModel.updateVideoTransform(newScale, newX, newY)
-                                    event.changes.forEach { it.consume() }
-                                } else if (pressedPointers.size == 1) {
-                                    val p = pressedPointers[0]
-                                    val pan = p.position - p.previousPosition
-                                    val currentScale = currentVideoClip?.scale ?: cfg.scale
-                                    if (currentScale > 1.01f) {
-                                        val oldX = currentVideoClip?.offsetX ?: cfg.offsetX
-                                        val oldY = currentVideoClip?.offsetY ?: cfg.offsetY
-
-                                        val maxPanX = (size.width * (currentScale - 1f) / 2f)
-                                        val maxPanY = (size.height * (currentScale - 1f) / 2f)
-
-                                        val newX = (oldX + pan.x).coerceIn(-maxPanX, maxPanX)
-                                        val newY = (oldY + pan.y).coerceIn(-maxPanY, maxPanY)
-
-                                        viewModel.updateVideoTransform(currentScale, newX, newY)
-                                        p.consume()
-                                    }
-                                }
-                            } while (event.changes.any { it.pressed })
-                            viewModel.saveVideoTransform()
+                            viewModel.updateVideoTransform(newScale, newX, newY)
                         }
                     },
                 contentAlignment = Alignment.Center
@@ -704,7 +674,6 @@ fun VideoPreviewCard(
                 ) {
                     // Real Android VideoView for imported gallery video
                     if (currentVideoClip?.isBlank != true && project.videoUri != null) {
-                        var videoPlayerRef by remember { mutableStateOf<android.media.MediaPlayer?>(null) }
                         val isVideoMuted = isMuted || currentVideoClip?.isMuted == true
 
                         LaunchedEffect(isVideoMuted, currentVideoClip?.volume) {
@@ -714,11 +683,31 @@ fun VideoPreviewCard(
                             } catch (_: Exception) {}
                         }
 
+                        val sourcePosMs = if (currentVideoClip != null) {
+                            val offsetFromClipStart = (currentPlayheadMs - currentVideoClip.startTimeMs).coerceAtLeast(0L)
+                            val target = currentVideoClip.trimStartMs + offsetFromClipStart
+                            target.coerceIn(currentVideoClip.trimStartMs, currentVideoClip.trimStartMs + currentVideoClip.durationMs)
+                        } else {
+                            currentPlayheadMs
+                        }
+
+                        // Immediate frame seek when playhead changes (scrubbing forward and backward)
+                        LaunchedEffect(sourcePosMs, isPlaying) {
+                            if (!isPlaying) {
+                                try {
+                                    videoPlayerRef?.seekTo(sourcePosMs.toInt())
+                                } catch (_: Exception) {}
+                            }
+                        }
+
                         AndroidView(
                             modifier = Modifier.fillMaxSize(),
                             factory = { ctx ->
                                 VideoView(ctx).apply {
                                     try {
+                                        isClickable = false
+                                        isFocusable = false
+                                        setOnTouchListener { _, _ -> false }
                                         setVideoURI(Uri.parse(project.videoUri))
                                         setOnPreparedListener { mp ->
                                             videoPlayerRef = mp
@@ -744,14 +733,6 @@ fun VideoPreviewCard(
                                     val v = if (isVideoMuted) 0f else (currentVideoClip?.volume ?: 1f).coerceIn(0f, 1f)
                                     videoPlayerRef?.setVolume(v, v)
 
-                                    val sourcePosMs = if (currentVideoClip != null) {
-                                        val offsetFromClipStart = (currentPlayheadMs - currentVideoClip.startTimeMs).coerceAtLeast(0L)
-                                        val target = currentVideoClip.trimStartMs + offsetFromClipStart
-                                        target.coerceIn(currentVideoClip.trimStartMs, currentVideoClip.trimStartMs + currentVideoClip.durationMs)
-                                    } else {
-                                        currentPlayheadMs
-                                    }
-
                                     if (isPlaying) {
                                         if (!vv.isPlaying) {
                                             vv.seekTo(sourcePosMs.toInt())
@@ -762,7 +743,7 @@ fun VideoPreviewCard(
                                             vv.pause()
                                         }
                                         val diff = Math.abs(vv.currentPosition - sourcePosMs.toInt())
-                                        if (diff > 500) {
+                                        if (diff > 50) {
                                             vv.seekTo(sourcePosMs.toInt())
                                         }
                                     }
@@ -1157,46 +1138,76 @@ fun VideoPreviewCard(
                 }
             }
 
-            // Floating Zoom / Scale HUD Bar
-            if (currentScale > 1.01f || currentOffsetX != 0f || currentOffsetY != 0f) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = 8.dp)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(Color(0xCC111116))
-                        .border(1.dp, QuranGold.copy(alpha = 0.7f), RoundedCornerShape(20.dp))
-                        .padding(horizontal = 10.dp, vertical = 4.dp)
+            // Floating Zoom / Scale HUD Bar with Direct In/Out Buttons
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 8.dp)
+                    .shadow(6.dp, RoundedCornerShape(20.dp))
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color(0xEE111118))
+                    .border(1.dp, if (currentScale > 1.01f) QuranGold else DarkBorder, RoundedCornerShape(20.dp))
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    // Zoom Out (−) Button
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(if (currentScale > 1.01f) QuranGold.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.1f))
+                            .clickable { viewModel.zoomOutVideo() }
+                            .testTag("preview_zoom_out_button"),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = "Zoom: ${String.format("%.1fx", currentScale)}",
-                            color = QuranGold,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Text("−", color = if (currentScale > 1.01f) QuranGold else TextGray, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Text(
+                        text = "${String.format("%.1fx", currentScale)}",
+                        color = QuranGold,
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+
+                    // Zoom In (+) Button
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(if (currentScale < 4.99f) QuranGold.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.1f))
+                            .clickable { viewModel.zoomInVideo() }
+                            .testTag("preview_zoom_in_button"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("+", color = if (currentScale < 4.99f) QuranGold else TextGray, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    if (currentScale > 1.01f || currentOffsetX != 0f || currentOffsetY != 0f) {
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(6.dp))
                                 .background(QuranGold.copy(alpha = 0.25f))
                                 .clickable { viewModel.resetVideoZoom() }
-                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
                                 .testTag("reset_zoom_button")
                         ) {
-                            Text("Reset Zoom", color = TextWhite, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Text("Reset", color = TextWhite, fontSize = 9.5.sp, fontWeight = FontWeight.Bold)
                         }
+
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(6.dp))
                                 .background(Color.White.copy(alpha = 0.15f))
                                 .clickable { viewModel.fitVideoToCanvas() }
-                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
                                 .testTag("fit_to_canvas_button")
                         ) {
-                            Text("Fit to Canvas", color = TextWhite, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Text("Fit", color = TextWhite, fontSize = 9.5.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }

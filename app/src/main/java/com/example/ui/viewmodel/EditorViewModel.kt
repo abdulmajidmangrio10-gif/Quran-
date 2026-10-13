@@ -696,6 +696,22 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         saveCurrentProject()
     }
 
+    fun zoomInVideo() {
+        val cfg = _currentProject.value.videoConfig
+        val newScale = (cfg.scale + 0.25f).coerceIn(1.0f, 5.0f)
+        updateVideoTransform(newScale, cfg.offsetX, cfg.offsetY)
+        saveCurrentProject()
+    }
+
+    fun zoomOutVideo() {
+        val cfg = _currentProject.value.videoConfig
+        val newScale = (cfg.scale - 0.25f).coerceIn(1.0f, 5.0f)
+        val maxPanX = if (newScale > 1f) cfg.offsetX else 0f
+        val maxPanY = if (newScale > 1f) cfg.offsetY else 0f
+        updateVideoTransform(newScale, maxPanX, maxPanY)
+        saveCurrentProject()
+    }
+
     // =====================================================================
     // TIMELINE CLIP EDITING: LENGTHEN, SHORTEN, MOVE, SPLIT, DELETE
     // =====================================================================
