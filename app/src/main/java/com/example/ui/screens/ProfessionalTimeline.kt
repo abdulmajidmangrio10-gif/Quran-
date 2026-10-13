@@ -35,6 +35,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.CropPortrait
+import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Movie
@@ -75,6 +76,7 @@ import com.example.data.model.AudioClip
 import com.example.data.model.EditingProject
 import com.example.data.model.ImageClip
 import com.example.data.model.QuranClip
+import com.example.data.model.StickerClip
 import com.example.data.model.TextClip
 import com.example.data.model.VideoTimelineClip
 import com.example.ui.theme.DarkBackground
@@ -112,6 +114,7 @@ fun ProfessionalTimelineView(
     timelineZoom: Float,
     isPlaying: Boolean,
     viewModel: EditorViewModel,
+    editingElementTrack: TrackType? = null,
     modifier: Modifier = Modifier
 ) {
     var showPlusMenu by remember { mutableStateOf(false) }
@@ -158,6 +161,16 @@ fun ProfessionalTimelineView(
                 .fillMaxWidth()
                 .padding(vertical = 4.dp)
         ) {
+            // Track visibility determination:
+            // In NORMAL MODE (editingElementTrack == null): Show ONLY main VIDEO timeline!
+            // In ELEMENT EDITING MODE (editingElementTrack != null): Show VIDEO track + corresponding element track!
+            val isEditing = editingElementTrack != null
+            val showQuranTrack = isEditing && editingElementTrack == TrackType.QURAN && project.quranClips.isNotEmpty()
+            val showTextTrack = isEditing && editingElementTrack == TrackType.TEXT && project.textClips.isNotEmpty()
+            val showStickerTrack = isEditing && editingElementTrack == TrackType.STICKER && project.stickerClips.isNotEmpty()
+            val showAudioTrack = isEditing && editingElementTrack == TrackType.AUDIO && project.audioClips.isNotEmpty()
+            val showImageTrack = isEditing && editingElementTrack == TrackType.IMAGE && project.imageClips.isNotEmpty()
+
             Row(modifier = Modifier.fillMaxWidth()) {
                 // 1. LEFT SIDE: Large Rounded RED/PINK "+" Button & Track Headers
                 Column(
@@ -250,32 +263,35 @@ fun ProfessionalTimelineView(
 
                     Spacer(modifier = Modifier.height(18.dp))
 
-                    // Track Labels Column (Only displays tracks that have clips)
+                    // Track Labels Column (Only displays active tracks)
                     Column(
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        if (project.videoClips.isNotEmpty()) {
-                            TrackMiniLabel("VIDEO", Icons.Default.Movie, selectedTrack == TrackType.VIDEO) {
-                                viewModel.selectTrack(TrackType.VIDEO, project.videoClips.firstOrNull()?.id)
-                            }
+                        TrackMiniLabel("VIDEO", Icons.Default.Movie, selectedTrack == TrackType.VIDEO) {
+                            viewModel.selectTrack(TrackType.VIDEO, project.videoClips.firstOrNull()?.id)
                         }
-                        if (project.quranClips.isNotEmpty()) {
+                        if (showQuranTrack) {
                             TrackMiniLabel("QURAN", Icons.Filled.MenuBook, selectedTrack == TrackType.QURAN) {
                                 viewModel.selectTrack(TrackType.QURAN, project.quranClips.firstOrNull()?.id)
                             }
                         }
-                        if (project.textClips.isNotEmpty()) {
+                        if (showTextTrack) {
                             TrackMiniLabel("TEXT", Icons.Default.TextFields, selectedTrack == TrackType.TEXT) {
                                 viewModel.selectTrack(TrackType.TEXT, project.textClips.firstOrNull()?.id)
                             }
                         }
-                        if (project.audioClips.isNotEmpty()) {
+                        if (showStickerTrack) {
+                            TrackMiniLabel("STICKER", Icons.Filled.EmojiEmotions, selectedTrack == TrackType.STICKER) {
+                                viewModel.selectTrack(TrackType.STICKER, project.stickerClips.firstOrNull()?.id)
+                            }
+                        }
+                        if (showAudioTrack) {
                             TrackMiniLabel("AUDIO", Icons.Default.Audiotrack, selectedTrack == TrackType.AUDIO) {
                                 viewModel.selectTrack(TrackType.AUDIO, project.audioClips.firstOrNull()?.id)
                             }
                         }
-                        if (project.imageClips.isNotEmpty()) {
+                        if (showImageTrack) {
                             TrackMiniLabel("IMAGE", Icons.Default.Image, selectedTrack == TrackType.IMAGE) {
                                 viewModel.selectTrack(TrackType.IMAGE, project.imageClips.firstOrNull()?.id)
                             }
@@ -284,11 +300,12 @@ fun ProfessionalTimelineView(
                 }
 
                 // 2. RIGHT SIDE: Horizontally Scrollable Timeline Viewport
-                val activeTrackCount = (if (project.videoClips.isNotEmpty()) 1 else 0) +
-                    (if (project.quranClips.isNotEmpty()) 1 else 0) +
-                    (if (project.textClips.isNotEmpty()) 1 else 0) +
-                    (if (project.audioClips.isNotEmpty()) 1 else 0) +
-                    (if (project.imageClips.isNotEmpty()) 1 else 0)
+                val activeTrackCount = 1 +
+                    (if (showQuranTrack) 1 else 0) +
+                    (if (showTextTrack) 1 else 0) +
+                    (if (showStickerTrack) 1 else 0) +
+                    (if (showAudioTrack) 1 else 0) +
+                    (if (showImageTrack) 1 else 0)
                 val dynamicTrackHeightDp = (activeTrackCount * 42).coerceAtLeast(42).dp
 
                 Box(
@@ -355,7 +372,7 @@ fun ProfessionalTimelineView(
                                 modifier = Modifier.fillMaxSize(),
                                 verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                // 1. Video Track (only shown if not empty)
+                                // 1. Video Track (Main track - always visible)
                                 if (project.videoClips.isNotEmpty()) {
                                     VideoTrackView(
                                         clips = project.videoClips,
@@ -371,8 +388,8 @@ fun ProfessionalTimelineView(
                                     )
                                 }
 
-                                // 2. Quran Track (only shown if not empty)
-                                if (project.quranClips.isNotEmpty()) {
+                                // 2. Quran Track (Visible only in Quran editing mode)
+                                if (showQuranTrack) {
                                     QuranTrackView(
                                         clips = project.quranClips,
                                         selectedTrack = selectedTrack,
@@ -387,8 +404,8 @@ fun ProfessionalTimelineView(
                                     )
                                 }
 
-                                // 3. Text Track (only shown if not empty)
-                                if (project.textClips.isNotEmpty()) {
+                                // 3. Text Track (Visible only in Text editing mode)
+                                if (showTextTrack) {
                                     TextTrackView(
                                         clips = project.textClips,
                                         selectedTrack = selectedTrack,
@@ -403,8 +420,24 @@ fun ProfessionalTimelineView(
                                     )
                                 }
 
-                                // 4. Audio Track (only shown if not empty)
-                                if (project.audioClips.isNotEmpty()) {
+                                // 4. Sticker Track (Visible only in Sticker editing mode)
+                                if (showStickerTrack) {
+                                    StickerTrackView(
+                                        clips = project.stickerClips,
+                                        selectedTrack = selectedTrack,
+                                        selectedClipId = selectedClipId,
+                                        dpPerMs = dpPerMs,
+                                        onSelect = { viewModel.selectTrack(TrackType.STICKER, it) },
+                                        onDragStart = { viewModel.onDragGestureStarted() },
+                                        onDragEnd = { viewModel.onDragGestureEnded() },
+                                        onTrimStart = { id, delta -> viewModel.trimClipStart(TrackType.STICKER, id, delta) },
+                                        onTrimEnd = { id, delta -> viewModel.trimClipEnd(TrackType.STICKER, id, delta) },
+                                        onMove = { id, delta -> viewModel.moveClip(TrackType.STICKER, id, delta) }
+                                    )
+                                }
+
+                                // 5. Audio Track (Visible only in Audio editing mode)
+                                if (showAudioTrack) {
                                     AudioTrackView(
                                         clips = project.audioClips,
                                         selectedTrack = selectedTrack,
@@ -419,8 +452,8 @@ fun ProfessionalTimelineView(
                                     )
                                 }
 
-                                // 5. Image Track (only shown if not empty)
-                                if (project.imageClips.isNotEmpty()) {
+                                // 6. Image Track (Visible only in Image editing mode)
+                                if (showImageTrack) {
                                     ImageTrackView(
                                         clips = project.imageClips,
                                         selectedTrack = selectedTrack,
@@ -848,6 +881,52 @@ fun ImageTrackView(
                 isMuted = false,
                 isSelected = isSelected,
                 accentColor = Color(0xFFAB47BC),
+                dpPerMs = dpPerMs,
+                onSelect = { onSelect(clip.id) },
+                onDragStart = onDragStart,
+                onDragEnd = onDragEnd,
+                onTrimStart = { onTrimStart(clip.id, it) },
+                onTrimEnd = { onTrimEnd(clip.id, it) },
+                onMove = { onMove(clip.id, it) }
+            )
+        }
+    }
+}
+
+// =========================================================================
+// 6. STICKER TRACK WITH MOVABLE AND TRIMMABLE CLIPS
+// =========================================================================
+@Composable
+fun StickerTrackView(
+    clips: List<StickerClip>,
+    selectedTrack: TrackType,
+    selectedClipId: String?,
+    dpPerMs: Float,
+    onSelect: (String) -> Unit,
+    onDragStart: () -> Unit,
+    onDragEnd: () -> Unit,
+    onTrimStart: (String, Long) -> Unit,
+    onTrimEnd: (String, Long) -> Unit,
+    onMove: (String, Long) -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(36.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(Color(0xFF261A34))
+            .border(1.dp, Color(0xFF5A2A7A), RoundedCornerShape(6.dp))
+    ) {
+        clips.forEach { clip ->
+            val isSelected = selectedTrack == TrackType.STICKER && (selectedClipId == clip.id || selectedClipId == null)
+            TimelineClipItem(
+                id = clip.id,
+                title = "Sticker: ${clip.emojiOrIcon}",
+                startTimeMs = clip.startTimeMs,
+                durationMs = clip.durationMs,
+                isMuted = false,
+                isSelected = isSelected,
+                accentColor = Color(0xFFBA68C8),
                 dpPerMs = dpPerMs,
                 onSelect = { onSelect(clip.id) },
                 onDragStart = onDragStart,

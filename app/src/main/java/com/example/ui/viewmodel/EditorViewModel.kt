@@ -83,7 +83,8 @@ enum class TrackType {
     QURAN,
     TEXT,
     AUDIO,
-    IMAGE
+    IMAGE,
+    STICKER
 }
 
 class EditorViewModel(application: Application) : AndroidViewModel(application) {
@@ -147,6 +148,10 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     private val _activeBottomTool = MutableStateFlow(BottomToolType.TIMELINE)
     val activeBottomTool: StateFlow<BottomToolType> = _activeBottomTool.asStateFlow()
 
+    // Smart Timeline Visibility: Current Element Being Edited (null = NORMAL MODE [VIDEO ONLY])
+    private val _editingElementTrack = MutableStateFlow<TrackType?>(null)
+    val editingElementTrack: StateFlow<TrackType?> = _editingElementTrack.asStateFlow()
+
     // Clean Toolbar Features
     private val _toolbarFeatures = MutableStateFlow(
         listOf(
@@ -165,10 +170,113 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
     fun openBottomTool(tool: BottomToolType) {
         _activeBottomTool.value = tool
+        when (tool) {
+            BottomToolType.QURAN -> openElementEditing(TrackType.QURAN)
+            BottomToolType.TEXT -> openElementEditing(TrackType.TEXT)
+            BottomToolType.STICKER -> openElementEditing(TrackType.STICKER)
+            BottomToolType.AUDIO -> openElementEditing(TrackType.AUDIO)
+            else -> {}
+        }
     }
 
     fun closeBottomTool() {
+        saveAndCloseElementEditing()
+    }
+
+    fun openElementEditing(track: TrackType, clipId: String? = null) {
+        _editingElementTrack.value = track
+        _selectedTrack.value = track
+        when (track) {
+            TrackType.QURAN -> {
+                val clips = _currentProject.value.quranClips
+                if (clips.isNotEmpty()) {
+                    val target = if (clipId != null) clips.find { it.id == clipId } ?: clips.first() else clips.first()
+                    _selectedClipId.value = target.id
+                    seekTo(target.startTimeMs)
+                }
+                _activeBottomTool.value = BottomToolType.QURAN
+            }
+            TrackType.TEXT -> {
+                val clips = _currentProject.value.textClips
+                if (clips.isNotEmpty()) {
+                    val target = if (clipId != null) clips.find { it.id == clipId } ?: clips.first() else clips.first()
+                    _selectedClipId.value = target.id
+                    _textInput.value = target.text
+                    _textAnimation.value = target.animation
+                    seekTo(target.startTimeMs)
+                }
+                _activeBottomTool.value = BottomToolType.TEXT
+            }
+            TrackType.STICKER -> {
+                val clips = _currentProject.value.stickerClips
+                if (clips.isNotEmpty()) {
+                    val target = if (clipId != null) clips.find { it.id == clipId } ?: clips.first() else clips.first()
+                    _selectedClipId.value = target.id
+                    seekTo(target.startTimeMs)
+                } else {
+                    addSticker("﷽", "Islamic")
+                }
+                _activeBottomTool.value = BottomToolType.STICKER
+            }
+            TrackType.AUDIO -> {
+                val clips = _currentProject.value.audioClips
+                if (clips.isNotEmpty()) {
+                    val target = if (clipId != null) clips.find { it.id == clipId } ?: clips.first() else clips.first()
+                    _selectedClipId.value = target.id
+                    seekTo(target.startTimeMs)
+                }
+                _activeBottomTool.value = BottomToolType.AUDIO
+            }
+            TrackType.IMAGE -> {
+                val clips = _currentProject.value.imageClips
+                if (clips.isNotEmpty()) {
+                    val target = if (clipId != null) clips.find { it.id == clipId } ?: clips.first() else clips.first()
+                    _selectedClipId.value = target.id
+                    seekTo(target.startTimeMs)
+                }
+                _activeBottomTool.value = BottomToolType.TIMELINE
+            }
+            else -> {
+                _editingElementTrack.value = null
+                _activeBottomTool.value = BottomToolType.TIMELINE
+            }
+        }
+    }
+
+    fun saveAndCloseElementEditing() {
+        pushSnapshot()
+        // If text was being edited, save latest text input into project
+        if (_editingElementTrack.value == TrackType.TEXT) {
+            val text = _textInput.value
+            val clipId = _selectedClipId.value
+            if (text.isNotBlank()) {
+                val existing = _currentProject.value.textClips
+                val updated = if (existing.isNotEmpty()) {
+                    existing.map { clip ->
+                        if (clip.id == clipId || clipId == null) {
+                            clip.copy(text = text, animation = _textAnimation.value)
+                        } else clip
+                    }
+                } else {
+                    listOf(
+                        TextClip(
+                            text = text,
+                            startTimeMs = _currentPlayheadMs.value,
+                            durationMs = 8000L,
+                            animation = _textAnimation.value
+                        )
+                    )
+                }
+                _currentProject.value = _currentProject.value.copy(textClips = updated)
+            }
+        }
+
+        // Return to NORMAL MODE: Show only the main video timeline
+        _editingElementTrack.value = null
+        _selectedTrack.value = TrackType.VIDEO
+        _selectedClipId.value = _currentProject.value.videoClips.firstOrNull()?.id
         _activeBottomTool.value = BottomToolType.TIMELINE
+        saveCurrentProject()
     }
 
     fun moveToolbarFeature(index: Int, direction: Int) {
@@ -833,7 +941,8 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         val maxText = proj.textClips.maxOfOrNull { it.startTimeMs + it.durationMs } ?: 0L
         val maxAudio = proj.audioClips.maxOfOrNull { it.startTimeMs + it.durationMs } ?: 0L
         val maxImage = proj.imageClips.maxOfOrNull { it.startTimeMs + it.durationMs } ?: 0L
-        val calculatedMax = maxOf(maxVideo, maxQuran, maxText, maxAudio, maxImage).coerceAtLeast(1000L)
+        val maxSticker = proj.stickerClips.maxOfOrNull { it.startTimeMs + it.durationMs } ?: 0L
+        val calculatedMax = maxOf(maxVideo, maxQuran, maxText, maxAudio, maxImage, maxSticker).coerceAtLeast(1000L)
         if (proj.durationMs != calculatedMax) {
             _currentProject.value = proj.copy(durationMs = calculatedMax)
         }
@@ -895,6 +1004,13 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                     if (clip.id == clipId) clip.copy(startTimeMs = safeStart) else clip
                 }
                 _currentProject.value = _currentProject.value.copy(imageClips = list)
+                recalculateProjectDuration()
+            }
+            TrackType.STICKER -> {
+                val list = _currentProject.value.stickerClips.map { clip ->
+                    if (clip.id == clipId) clip.copy(startTimeMs = safeStart) else clip
+                }
+                _currentProject.value = _currentProject.value.copy(stickerClips = list)
                 recalculateProjectDuration()
             }
             else -> {}
@@ -988,6 +1104,16 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                 _currentProject.value = _currentProject.value.copy(imageClips = list)
                 recalculateProjectDuration()
             }
+            TrackType.STICKER -> {
+                val list = _currentProject.value.stickerClips.map { clip ->
+                    if (clip.id == clipId) {
+                        val newDur = (initialDur + deltaMs).coerceAtLeast(500L)
+                        clip.copy(durationMs = newDur)
+                    } else clip
+                }
+                _currentProject.value = _currentProject.value.copy(stickerClips = list)
+                recalculateProjectDuration()
+            }
             else -> {}
         }
     }
@@ -1057,6 +1183,17 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                 }
                 _currentProject.value = _currentProject.value.copy(imageClips = list)
             }
+            TrackType.STICKER -> {
+                val list = _currentProject.value.stickerClips.map { clip ->
+                    if (clip.id == clipId) {
+                        val currentEnd = clip.startTimeMs + clip.durationMs
+                        val newStart = (clip.startTimeMs + deltaMs).coerceIn(0L, currentEnd - 500L)
+                        val newDur = (currentEnd - newStart).coerceAtLeast(500L)
+                        clip.copy(startTimeMs = newStart, durationMs = newDur)
+                    } else clip
+                }
+                _currentProject.value = _currentProject.value.copy(stickerClips = list)
+            }
             else -> {}
         }
     }
@@ -1112,6 +1249,15 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                 }
                 _currentProject.value = _currentProject.value.copy(imageClips = list)
             }
+            TrackType.STICKER -> {
+                val list = _currentProject.value.stickerClips.map { clip ->
+                    if (clip.id == clipId) {
+                        val newDur = (clip.durationMs + deltaMs).coerceAtLeast(500L)
+                        clip.copy(durationMs = newDur)
+                    } else clip
+                }
+                _currentProject.value = _currentProject.value.copy(stickerClips = list)
+            }
             else -> {}
         }
     }
@@ -1163,6 +1309,15 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                     } else clip
                 }
                 _currentProject.value = _currentProject.value.copy(imageClips = list)
+            }
+            TrackType.STICKER -> {
+                val list = _currentProject.value.stickerClips.map { clip ->
+                    if (clip.id == clipId) {
+                        val newStart = (clip.startTimeMs + deltaMs).coerceAtLeast(0L)
+                        clip.copy(startTimeMs = newStart)
+                    } else clip
+                }
+                _currentProject.value = _currentProject.value.copy(stickerClips = list)
             }
             else -> {}
         }
@@ -1468,6 +1623,13 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                     _selectedTrack.value = TrackType.VIDEO
                 }
             }
+            TrackType.STICKER -> {
+                val updated = _currentProject.value.stickerClips.filterNot { it.id == clipId }
+                _currentProject.value = _currentProject.value.copy(stickerClips = updated)
+                if (updated.isEmpty()) {
+                    _selectedTrack.value = TrackType.VIDEO
+                }
+            }
             else -> {}
         }
         _selectedClipId.value = null
@@ -1531,6 +1693,17 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                 )
                 _currentProject.value = _currentProject.value.copy(
                     imageClips = _currentProject.value.imageClips + copy
+                )
+                _selectedClipId.value = copy.id
+            }
+            TrackType.STICKER -> {
+                val orig = _currentProject.value.stickerClips.find { it.id == clipId } ?: return
+                val copy = orig.copy(
+                    id = UUID.randomUUID().toString(),
+                    startTimeMs = (orig.startTimeMs + orig.durationMs).coerceAtMost(_currentProject.value.durationMs - 2000L)
+                )
+                _currentProject.value = _currentProject.value.copy(
+                    stickerClips = _currentProject.value.stickerClips + copy
                 )
                 _selectedClipId.value = copy.id
             }

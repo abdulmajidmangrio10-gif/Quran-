@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -39,6 +40,7 @@ import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.ContentCopy
@@ -123,6 +125,7 @@ fun MainEditorScreen(
     val timelineZoom by viewModel.timelineZoom.collectAsStateWithLifecycle()
     val activeBottomTool by viewModel.activeBottomTool.collectAsStateWithLifecycle()
     val toolbarFeatures by viewModel.toolbarFeatures.collectAsStateWithLifecycle()
+    val editingElementTrack by viewModel.editingElementTrack.collectAsStateWithLifecycle()
 
     val totalDurationMs = project.durationMs.coerceAtLeast(1000L)
     val formatTime = { ms: Long ->
@@ -176,7 +179,7 @@ fun MainEditorScreen(
                     onTogglePlay = { viewModel.togglePlayPause() },
                     onToggleMute = { viewModel.toggleMute() },
                     onToggleFullscreen = { viewModel.toggleFullscreen() },
-                    onTapOverlay = { viewModel.openBottomTool(BottomToolType.QURAN) }
+                    onTapOverlay = { track, clipId -> viewModel.openElementEditing(track, clipId) }
                 )
             }
 
@@ -204,57 +207,131 @@ fun MainEditorScreen(
                 onZoomOut = { viewModel.zoomOutTimeline() }
             )
 
-            // 2. THE EDITING TOOLBAR: Quran, Text, Audio, Speed, Canvas, Adjust, Filter, Effects, Sticker
-            EditorToolbarRow(
-                features = toolbarFeatures,
-                activeTool = activeBottomTool,
-                onToolClick = { toolId ->
-                    when (toolId) {
-                        "timeline" -> viewModel.closeBottomTool()
-                        "quran" -> viewModel.openBottomTool(BottomToolType.QURAN)
-                        "text" -> viewModel.openBottomTool(BottomToolType.TEXT)
-                        "audio" -> viewModel.openBottomTool(BottomToolType.AUDIO)
-                        "speed" -> viewModel.openBottomTool(BottomToolType.SPEED)
-                        "canvas" -> viewModel.openBottomTool(BottomToolType.CANVAS)
-                        "adjust" -> viewModel.openBottomTool(BottomToolType.ADJUST)
-                        "filter" -> viewModel.openBottomTool(BottomToolType.FILTER)
-                        "effects" -> viewModel.openBottomTool(BottomToolType.EFFECTS)
-                        "sticker" -> viewModel.openBottomTool(BottomToolType.STICKER)
+            if (editingElementTrack != null) {
+                // =========================================================
+                // ELEMENT EDITING MODE:
+                // - Header Bar with prominent "Done" / Save button
+                // - Timeline showing Video track + Active Element track
+                // - Element Editing Controls (Quran / Text / Sticker / Audio / Image)
+                // =========================================================
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                        .testTag("element_editing_header_bar"),
+                    colors = CardDefaults.cardColors(containerColor = DarkCardLighter),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(QuranGold)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            val elementTitle = when (editingElementTrack) {
+                                TrackType.QURAN -> "Editing Quran Ayah"
+                                TrackType.TEXT -> "Editing Text Overlay"
+                                TrackType.STICKER -> "Editing Sticker / Emoji"
+                                TrackType.AUDIO -> "Editing Audio Track"
+                                TrackType.IMAGE -> "Editing Image Overlay"
+                                else -> "Editing Element"
+                            }
+                            Text(
+                                text = elementTitle,
+                                color = QuranGold,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        // PROMINENT SAVE / DONE BUTTON (Returns to NORMAL MODE)
+                        Button(
+                            onClick = { viewModel.saveAndCloseElementEditing() },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = QuranGold,
+                                contentColor = TextDark
+                            ),
+                            shape = RoundedCornerShape(16.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
+                            modifier = Modifier
+                                .height(32.dp)
+                                .testTag("save_element_button")
+                        ) {
+                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Done", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
                     }
                 }
-            )
 
-            // 3. BELOW THIS TOOLBAR IS THE ACTUAL TIMELINE (or active inline panel)
-            Crossfade(
-                targetState = activeBottomTool,
-                label = "TimelinePanelTransition",
-                modifier = Modifier.padding(bottom = 4.dp)
-            ) { tool ->
-                when (tool) {
-                    BottomToolType.TIMELINE -> {
-                        ProfessionalTimelineView(
-                            project = project,
-                            currentPlayheadMs = currentPlayheadMs,
-                            totalDurationMs = totalDurationMs,
-                            selectedTrack = selectedTrack,
-                            selectedClipId = selectedClipId,
-                            timelineZoom = timelineZoom,
-                            isPlaying = isPlaying,
-                            viewModel = viewModel
-                        )
-                    }
+                // Timeline displaying Video Track AND the active element track
+                ProfessionalTimelineView(
+                    project = project,
+                    currentPlayheadMs = currentPlayheadMs,
+                    totalDurationMs = totalDurationMs,
+                    selectedTrack = selectedTrack,
+                    selectedClipId = selectedClipId,
+                    timelineZoom = timelineZoom,
+                    isPlaying = isPlaying,
+                    viewModel = viewModel,
+                    editingElementTrack = editingElementTrack
+                )
+
+                // The active element editing controls
+                when (activeBottomTool) {
                     BottomToolType.QURAN -> InlineQuranPanel(
                         viewModel = viewModel,
-                        onClose = { viewModel.closeBottomTool() }
+                        onClose = { viewModel.saveAndCloseElementEditing() }
                     )
                     BottomToolType.TEXT -> InlineTextPanel(
                         viewModel = viewModel,
-                        onClose = { viewModel.closeBottomTool() }
+                        onClose = { viewModel.saveAndCloseElementEditing() }
+                    )
+                    BottomToolType.STICKER -> InlineStickerPanel(
+                        viewModel = viewModel,
+                        onClose = { viewModel.saveAndCloseElementEditing() }
                     )
                     BottomToolType.AUDIO -> InlineAudioPanel(
                         viewModel = viewModel,
-                        onClose = { viewModel.closeBottomTool() }
+                        onClose = { viewModel.saveAndCloseElementEditing() }
                     )
+                    else -> {}
+                }
+            } else {
+                // =========================================================
+                // NORMAL MODE:
+                // - Main Editing Toolbar
+                // - Normal Collapsed Timeline showing ONLY the VIDEO Track
+                // =========================================================
+                EditorToolbarRow(
+                    features = toolbarFeatures,
+                    activeTool = activeBottomTool,
+                    onToolClick = { toolId ->
+                        when (toolId) {
+                            "timeline" -> viewModel.saveAndCloseElementEditing()
+                            "quran" -> viewModel.openElementEditing(TrackType.QURAN)
+                            "text" -> viewModel.openElementEditing(TrackType.TEXT)
+                            "audio" -> viewModel.openElementEditing(TrackType.AUDIO)
+                            "sticker" -> viewModel.openElementEditing(TrackType.STICKER)
+                            "speed" -> viewModel.openBottomTool(BottomToolType.SPEED)
+                            "canvas" -> viewModel.openBottomTool(BottomToolType.CANVAS)
+                            "adjust" -> viewModel.openBottomTool(BottomToolType.ADJUST)
+                            "filter" -> viewModel.openBottomTool(BottomToolType.FILTER)
+                            "effects" -> viewModel.openBottomTool(BottomToolType.EFFECTS)
+                        }
+                    }
+                )
+
+                when (activeBottomTool) {
                     BottomToolType.SPEED -> InlineSpeedPanel(
                         viewModel = viewModel,
                         onClose = { viewModel.closeBottomTool() }
@@ -275,11 +352,8 @@ fun MainEditorScreen(
                         viewModel = viewModel,
                         onClose = { viewModel.closeBottomTool() }
                     )
-                    BottomToolType.STICKER -> InlineStickerPanel(
-                        viewModel = viewModel,
-                        onClose = { viewModel.closeBottomTool() }
-                    )
                     else -> {
+                        // NORMAL COLLAPSED TIMELINE: SHOWS ONLY THE MAIN VIDEO TIMELINE!
                         ProfessionalTimelineView(
                             project = project,
                             currentPlayheadMs = currentPlayheadMs,
@@ -288,7 +362,8 @@ fun MainEditorScreen(
                             selectedClipId = selectedClipId,
                             timelineZoom = timelineZoom,
                             isPlaying = isPlaying,
-                            viewModel = viewModel
+                            viewModel = viewModel,
+                            editingElementTrack = null
                         )
                     }
                 }
@@ -595,7 +670,7 @@ fun VideoPreviewCard(
     onTogglePlay: () -> Unit,
     onToggleMute: () -> Unit,
     onToggleFullscreen: () -> Unit,
-    onTapOverlay: () -> Unit
+    onTapOverlay: (TrackType, String?) -> Unit
 ) {
     val cfg = project.videoConfig
 
@@ -907,8 +982,7 @@ fun VideoPreviewCard(
                                 }
                             }
                             .clickable {
-                                viewModel.selectTrack(TrackType.QURAN, activeQuran.id)
-                                onTapOverlay()
+                                onTapOverlay(TrackType.QURAN, activeQuran.id)
                             },
                         contentAlignment = Alignment.Center
                     ) {
@@ -1023,7 +1097,7 @@ fun VideoPreviewCard(
                                 }
                             }
                             .clickable {
-                                viewModel.selectTrack(TrackType.TEXT, activeText.id)
+                                onTapOverlay(TrackType.TEXT, activeText.id)
                             },
                         contentAlignment = Alignment.Center
                     ) {
@@ -1077,6 +1151,9 @@ fun VideoPreviewCard(
                                     change.consume()
                                     viewModel.moveStickerPosition(activeSticker.id, dragAmount.x / 400f, dragAmount.y / 400f)
                                 }
+                            }
+                            .clickable {
+                                onTapOverlay(TrackType.STICKER, activeSticker.id)
                             },
                         contentAlignment = Alignment.Center
                     ) {
@@ -1107,6 +1184,9 @@ fun VideoPreviewCard(
                                     change.consume()
                                     viewModel.moveImagePosition(activeImage.id, dragAmount.x / 400f, dragAmount.y / 400f)
                                 }
+                            }
+                            .clickable {
+                                onTapOverlay(TrackType.IMAGE, activeImage.id)
                             }
                             .size(75.dp)
                             .clip(RoundedCornerShape(8.dp))

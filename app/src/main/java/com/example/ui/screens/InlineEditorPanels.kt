@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -89,7 +90,6 @@ import com.example.data.model.AspectRatioOption
 import com.example.data.model.CanvasBgType
 import com.example.data.model.EffectType
 import com.example.data.model.FilterType
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material.icons.filled.MenuBook
 import com.example.data.quran.QuranData
 import com.example.data.quran.SurahMeta
@@ -123,16 +123,30 @@ fun InlinePanelHeader(
             fontWeight = FontWeight.Bold
         )
 
-        IconButton(
-            onClick = onClose,
-            modifier = Modifier.size(28.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.Close,
-                contentDescription = "Close",
-                tint = TextWhite,
-                modifier = Modifier.size(18.dp)
-            )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Button(
+                onClick = onClose,
+                colors = ButtonDefaults.buttonColors(containerColor = QuranGold, contentColor = TextDark),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.height(28.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
+            ) {
+                Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Done", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+
+            IconButton(
+                onClick = onClose,
+                modifier = Modifier.size(28.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Close",
+                    tint = TextWhite,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
         }
     }
 }
