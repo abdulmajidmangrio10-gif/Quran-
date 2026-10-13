@@ -88,11 +88,19 @@ fun ExportDialog(
     val exportProgress by viewModel.exportProgress.collectAsStateWithLifecycle()
     val exportStage by viewModel.exportStage.collectAsStateWithLifecycle()
     val isComplete by viewModel.exportCompleted.collectAsStateWithLifecycle()
+    val project by viewModel.currentProject.collectAsStateWithLifecycle()
 
-    var selectedResolution by remember { mutableStateOf("1080p") }
+    var selectedResolution by remember { mutableStateOf("1080p (FHD)") }
     var selectedFps by remember { mutableStateOf(30) }
-    var selectedQuality by remember { mutableStateOf("High") }
-    var watermarkEnabled by remember { mutableStateOf(false) }
+    var selectedFormat by remember { mutableStateOf("MP4") }
+
+    val durSec = (project.durationMs / 1000).coerceAtLeast(1)
+    val estimatedMb = when (selectedResolution) {
+        "480p" -> String.format(java.util.Locale.US, "%.1f MB", durSec * 0.4f)
+        "720p" -> String.format(java.util.Locale.US, "%.1f MB", durSec * 0.8f)
+        "4K (UHD)" -> String.format(java.util.Locale.US, "%.1f MB", durSec * 3.8f)
+        else -> String.format(java.util.Locale.US, "%.1f MB", durSec * 1.5f)
+    }
 
     Dialog(
         onDismissRequest = { if (!isExporting) onDismiss() },
@@ -101,9 +109,9 @@ fun ExportDialog(
         Surface(
             modifier = Modifier
                 .fillMaxWidth(0.92f)
-                .clip(RoundedCornerShape(20.dp))
-                .border(1.dp, DarkBorder, RoundedCornerShape(20.dp)),
-            color = DarkCard
+                .clip(RoundedCornerShape(24.dp))
+                .border(1.dp, com.example.ui.theme.DarkBorder, RoundedCornerShape(24.dp)),
+            color = com.example.ui.theme.DarkCard
         ) {
             Column(
                 modifier = Modifier
@@ -111,143 +119,207 @@ fun ExportDialog(
                     .verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Header
+                // Header Bar
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = if (isComplete) "Export Completed!" else "Export Video",
+                        text = if (isComplete) "Video Saved!" else if (isExporting) "Export Progress" else "Export Settings",
                         color = TextWhite,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold
                     )
                     if (!isExporting) {
-                        IconButton(onClick = onDismiss) {
-                            Icon(Icons.Default.Close, contentDescription = "Close", tint = TextGray)
+                        IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = TextGray, modifier = Modifier.size(20.dp))
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 if (isComplete) {
-                    // Export Success View
+                    // =========================================================
+                    // SCREEN 21 & 22: VIDEO SAVED & SHARE SCREEN
+                    // =========================================================
                     Box(
                         modifier = Modifier
-                            .size(72.dp)
+                            .size(76.dp)
                             .clip(CircleShape)
-                            .background(QuranGold.copy(alpha = 0.15f)),
+                            .background(com.example.ui.theme.NeonGreen.copy(alpha = 0.15f))
+                            .border(2.dp, com.example.ui.theme.NeonGreen, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.CheckCircle,
                             contentDescription = "Success",
-                            tint = QuranGold,
+                            tint = com.example.ui.theme.NeonGreen,
                             modifier = Modifier.size(48.dp)
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
                     Text(
-                        text = "Your Quran video has been rendered in Full HD with Quran Ayah calligraphy and Urdu translations!",
+                        text = "Video Saved to Gallery!",
                         color = TextWhite,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Text(
+                        text = "${project.title} • $selectedResolution • $selectedFps FPS",
+                        color = TextGray,
+                        fontSize = 12.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Play Video Button
+                    Button(
+                        onClick = {
+                            viewModel.togglePlayPause()
+                            Toast.makeText(context, "Playing project preview", Toast.LENGTH_SHORT).show()
+                            onDismiss()
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp),
+                        shape = RoundedCornerShape(22.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = com.example.ui.theme.NeonPurple)
+                    ) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Play Video", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
+
+                    Spacer(modifier = Modifier.height(18.dp))
+
+                    // Social Share Row (WhatsApp, YouTube, Instagram, Facebook)
+                    Text("Share to Social Media", color = TextGray, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        val shareApps = listOf(
+                            Pair("WhatsApp", Color(0xFF25D366)),
+                            Pair("YouTube", Color(0xFFFF0000)),
+                            Pair("Instagram", Color(0xFFE1306C)),
+                            Pair("Facebook", Color(0xFF1877F2))
+                        )
+
+                        shareApps.forEach { (appName, appColor) ->
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.clickable {
+                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(Intent.EXTRA_SUBJECT, project.title)
+                                        putExtra(Intent.EXTRA_TEXT, "Watch my video: ${project.title} created with Video Editor.")
+                                    }
+                                    context.startActivity(Intent.createChooser(shareIntent, "Share via $appName"))
+                                }
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(CircleShape)
+                                        .background(appColor.copy(alpha = 0.2f))
+                                        .border(1.dp, appColor, CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Default.Share, contentDescription = appName, tint = appColor, modifier = Modifier.size(20.dp))
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(appName, color = TextWhite, fontSize = 10.sp)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(22.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = TextGray)
+                    ) {
+                        Text("Close", fontWeight = FontWeight.Bold)
+                    }
+
+                } else if (isExporting) {
+                    // =========================================================
+                    // SCREEN 20: EXPORT PROGRESS (Circular percentage ring)
+                    // =========================================================
+                    Box(
+                        modifier = Modifier
+                            .size(120.dp)
+                            .padding(8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            progress = { exportProgress / 100f },
+                            modifier = Modifier.fillMaxSize(),
+                            color = com.example.ui.theme.NeonPurple,
+                            trackColor = com.example.ui.theme.DarkCardLighter,
+                            strokeWidth = 8.dp
+                        )
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "${exportProgress.toInt()}%",
+                                color = TextWhite,
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text(
+                        text = exportStage,
+                        color = com.example.ui.theme.NeonCyan,
                         fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Text(
+                        text = "Rendering video frames, Quran calligraphy & audio waveforms...",
+                        color = TextGray,
+                        fontSize = 11.sp,
                         textAlign = TextAlign.Center
                     )
 
                     Spacer(modifier = Modifier.height(20.dp))
 
-                    // Action buttons: Save to Device, Share
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Button(
-                            onClick = {
-                                Toast.makeText(context, "Saved to Gallery / Movies / QuranVideoEditor", Toast.LENGTH_LONG).show()
-                            },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(20.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = QuranGold, contentColor = TextDark)
-                        ) {
-                            Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Save", fontWeight = FontWeight.Bold)
-                        }
-
-                        Button(
-                            onClick = {
-                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                    type = "text/plain"
-                                    putExtra(Intent.EXTRA_SUBJECT, "Quran Video Recitation")
-                                    putExtra(Intent.EXTRA_TEXT, "Watch my Holy Quran video recitation created with Quran Video Editor by Hafiz Abdul Majid Mangrew.")
-                                }
-                                context.startActivity(Intent.createChooser(shareIntent, "Share Quran Video"))
-                            },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(20.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = DarkCardLighter, contentColor = TextWhite)
-                        ) {
-                            Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Share", fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
                     OutlinedButton(
-                        onClick = onDismiss,
+                        onClick = { viewModel.dismissExport() },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(20.dp)
+                        shape = RoundedCornerShape(20.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEF4444))
                     ) {
-                        Text("Done", color = TextGray)
+                        Text("Cancel", fontWeight = FontWeight.Bold)
                     }
-
-                } else if (isExporting) {
-                    // Real Rendering Progress View
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Text(
-                        text = "${exportProgress.toInt()}%",
-                        color = QuranGold,
-                        fontSize = 32.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    LinearProgressIndicator(
-                        progress = { exportProgress / 100f },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(8.dp)
-                            .clip(RoundedCornerShape(4.dp)),
-                        color = QuranGold,
-                        trackColor = DarkCardLighter
-                    )
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Text(
-                        text = exportStage,
-                        color = TextWhite,
-                        fontSize = 12.sp,
-                        textAlign = TextAlign.Center
-                    )
-
-                    Spacer(modifier = Modifier.height(16.dp))
 
                 } else {
-                    // Configuration Form: Resolution, FPS, Quality, Watermark
+                    // =========================================================
+                    // SCREEN 18: EXPORT SETTINGS FORM
+                    // =========================================================
+                    // 1. Resolution
                     Text(
                         text = "Resolution",
                         color = TextWhite,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.Bold,
                         modifier = Modifier.align(Alignment.Start)
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -255,22 +327,24 @@ fun ExportDialog(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        listOf("480p", "720p", "1080p", "Original").forEach { res ->
+                        listOf("480p", "720p", "1080p (FHD)", "4K (UHD)").forEach { res ->
                             val isSel = selectedResolution == res
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (isSel) QuranGold else DarkCardLighter)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (isSel) com.example.ui.theme.NeonPurple else com.example.ui.theme.DarkCardLighter)
+                                    .border(1.dp, if (isSel) com.example.ui.theme.NeonCyan else com.example.ui.theme.DarkBorder, RoundedCornerShape(10.dp))
                                     .clickable { selectedResolution = res }
-                                    .padding(vertical = 8.dp),
+                                    .padding(vertical = 10.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = res,
-                                    color = if (isSel) TextDark else TextWhite,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
+                                    color = TextWhite,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Center
                                 )
                             }
                         }
@@ -278,11 +352,12 @@ fun ExportDialog(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
+                    // 2. Frame Rate
                     Text(
-                        text = "Frame Rate (FPS)",
+                        text = "Frame Rate",
                         color = TextWhite,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.Bold,
                         modifier = Modifier.align(Alignment.Start)
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -295,16 +370,17 @@ fun ExportDialog(
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (isSel) QuranGold else DarkCardLighter)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (isSel) com.example.ui.theme.NeonPurple else com.example.ui.theme.DarkCardLighter)
+                                    .border(1.dp, if (isSel) com.example.ui.theme.NeonCyan else com.example.ui.theme.DarkBorder, RoundedCornerShape(10.dp))
                                     .clickable { selectedFps = fps }
-                                    .padding(vertical = 8.dp),
+                                    .padding(vertical = 10.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = "$fps FPS",
-                                    color = if (isSel) TextDark else TextWhite,
-                                    fontSize = 11.sp,
+                                    text = "$fps fps",
+                                    color = TextWhite,
+                                    fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
@@ -313,71 +389,45 @@ fun ExportDialog(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    Text(
-                        text = "Quality",
-                        color = TextWhite,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.align(Alignment.Start)
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    // 3. Format & Size Info
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        listOf("Low", "Medium", "High", "Maximum").forEach { q ->
-                            val isSel = selectedQuality == q
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (isSel) QuranGold else DarkCardLighter)
-                                    .clickable { selectedQuality = q }
-                                    .padding(vertical = 8.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = q,
-                                    color = if (isSel) TextDark else TextWhite,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(com.example.ui.theme.DarkCardLighter)
+                            .padding(12.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Add Video Watermark", color = TextWhite, fontSize = 13.sp)
-                        Switch(
-                            checked = watermarkEnabled,
-                            onCheckedChange = { watermarkEnabled = it },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = QuranGold,
-                                checkedTrackColor = QuranGold.copy(alpha = 0.4f)
-                            )
-                        )
+                        Column {
+                            Text("Format: $selectedFormat", color = TextWhite, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("Estimated Size: $estimatedMb", color = com.example.ui.theme.NeonCyan, fontSize = 11.sp)
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(com.example.ui.theme.NeonPurple.copy(alpha = 0.2f))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text("High Quality", color = com.example.ui.theme.NeonPurple, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(20.dp))
 
+                    // Export Button with Purple Gradient
                     Button(
                         onClick = {
-                            viewModel.startExport(selectedResolution, selectedFps, selectedQuality)
+                            viewModel.startExport(selectedResolution, selectedFps, "High")
                         },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(48.dp)
                             .testTag("start_export_button"),
                         shape = RoundedCornerShape(24.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = QuranGold, contentColor = TextDark)
+                        colors = ButtonDefaults.buttonColors(containerColor = com.example.ui.theme.NeonPurple)
                     ) {
-                        Text("Start Export", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        Text("Export Video", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextWhite)
                     }
                 }
             }

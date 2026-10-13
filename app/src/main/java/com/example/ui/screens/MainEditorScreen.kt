@@ -417,14 +417,17 @@ fun EditorTopBar(
         Button(
             onClick = onExport,
             colors = ButtonDefaults.buttonColors(
-                containerColor = QuranGold,
-                contentColor = TextDark
+                containerColor = com.example.ui.theme.NeonPurple,
+                contentColor = TextWhite
             ),
             shape = RoundedCornerShape(20.dp),
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
             modifier = Modifier
                 .height(34.dp)
                 .testTag("export_button")
         ) {
+            Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(4.dp))
             Text(
                 text = "Export",
                 fontWeight = FontWeight.Bold,
@@ -481,7 +484,7 @@ fun EditorTransportControlStrip(
             // Timecode display
             Text(
                 text = timeFormatted,
-                color = QuranGold,
+                color = com.example.ui.theme.NeonCyan,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace
@@ -491,12 +494,12 @@ fun EditorTransportControlStrip(
         // Center: Large prominent PLAY / PAUSE button
         Box(
             modifier = Modifier
-                .size(38.dp)
-                .shadow(4.dp, CircleShape)
+                .size(42.dp)
+                .shadow(6.dp, CircleShape)
                 .clip(CircleShape)
                 .background(
                     Brush.linearGradient(
-                        colors = listOf(QuranGold, Color(0xFFFFD54F))
+                        colors = listOf(com.example.ui.theme.NeonPurple, com.example.ui.theme.NeonBlue)
                     )
                 )
                 .clickable(onClick = onPlayPause)
@@ -506,7 +509,7 @@ fun EditorTransportControlStrip(
             Icon(
                 imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                 contentDescription = if (isPlaying) "Pause" else "Play",
-                tint = TextDark,
+                tint = TextWhite,
                 modifier = Modifier.size(24.dp)
             )
         }

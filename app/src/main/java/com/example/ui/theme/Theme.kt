@@ -12,15 +12,15 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-fun getDarkColorScheme(accentColor: Color = QuranGold) = darkColorScheme(
+fun getDarkColorScheme(accentColor: Color = NeonPurple) = darkColorScheme(
     primary = accentColor,
-    onPrimary = TextDark,
-    primaryContainer = Color(0xFF2C2410),
-    onPrimaryContainer = QuranGoldLight,
-    secondary = AccentTeal,
+    onPrimary = TextWhite,
+    primaryContainer = Color(0xFF2C194D),
+    onPrimaryContainer = NeonCyan,
+    secondary = NeonBlue,
     onSecondary = TextWhite,
-    tertiary = AccentBlue,
-    onTertiary = TextWhite,
+    tertiary = QuranGold,
+    onTertiary = TextDark,
     background = DarkBackground,
     onBackground = TextWhite,
     surface = DarkSurface,
@@ -31,10 +31,11 @@ fun getDarkColorScheme(accentColor: Color = QuranGold) = darkColorScheme(
     outlineVariant = DarkBorderLight
 )
 
-fun getLightColorScheme(accentColor: Color = QuranGold) = lightColorScheme(
+fun getLightColorScheme(accentColor: Color = NeonPurple) = lightColorScheme(
     primary = accentColor,
     onPrimary = TextWhite,
-    secondary = AccentTeal,
+    secondary = NeonBlue,
+    tertiary = QuranGold,
     background = Color(0xFFF7F7FA),
     surface = Color(0xFFFFFFFF),
     surfaceVariant = Color(0xFFEBEBF0),
@@ -46,7 +47,7 @@ fun getLightColorScheme(accentColor: Color = QuranGold) = lightColorScheme(
 @Composable
 fun QuranVideoEditorTheme(
     darkTheme: Boolean = true,
-    accentColor: Color = QuranGold,
+    accentColor: Color = NeonPurple,
     content: @Composable () -> Unit
 ) {
     val colorScheme = if (darkTheme) getDarkColorScheme(accentColor) else getLightColorScheme(accentColor)

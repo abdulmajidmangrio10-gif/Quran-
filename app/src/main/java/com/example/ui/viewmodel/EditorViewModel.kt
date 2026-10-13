@@ -621,6 +621,54 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun duplicateProject(project: EditingProject) {
+        val dateStr = SimpleDateFormat("MMM dd, yyyy", Locale.US).format(Date())
+        val duplicated = project.copy(
+            id = UUID.randomUUID().toString(),
+            title = "${project.title} (Copy)",
+            createdAt = dateStr
+        )
+        viewModelScope.launch {
+            repository.saveProject(duplicated)
+        }
+    }
+
+    fun renameProject(projectId: String, newTitle: String) {
+        val trimmed = newTitle.trim()
+        if (trimmed.isEmpty()) return
+        val proj = projects.value.find { it.id == projectId } ?: _currentProject.value
+        val updated = proj.copy(title = trimmed)
+        if (_currentProject.value.id == projectId) {
+            _currentProject.value = updated
+        }
+        viewModelScope.launch {
+            repository.saveProject(updated)
+        }
+    }
+
+    fun setupNewProject(name: String, ratio: AspectRatioOption, uri: Uri? = null) {
+        val title = name.ifBlank { "Project ${projects.value.size + 1}" }
+        if (uri != null) {
+            onMediaSelected(uri, title)
+            setCanvasRatio(ratio)
+        } else {
+            createBlankProject()
+            _currentProject.value = _currentProject.value.copy(
+                title = title,
+                canvas = _currentProject.value.canvas.copy(aspectRatio = ratio)
+            )
+            saveCurrentProject()
+        }
+    }
+
+    fun clearAppCache() {
+        val context = getApplication<Application>()
+        try {
+            context.cacheDir.deleteRecursively()
+            android.widget.Toast.makeText(context, "Cache cleared successfully", android.widget.Toast.LENGTH_SHORT).show()
+        } catch (_: Exception) {}
+    }
+
     private var audioPlayer: MediaPlayer? = null
     private var currentlyPlayingAudioClipId: String? = null
 
@@ -1934,6 +1982,19 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         _selectedClipId.value = updated.firstOrNull()?.id
         _currentScreen.value = AppScreen.MAIN_EDITOR
         _activeBottomTool.value = BottomToolType.TIMELINE
+        saveCurrentProject()
+    }
+
+    fun setTextColor(color: Long) {
+        pushSnapshot()
+        val selId = _selectedClipId.value
+        val existing = _currentProject.value.textClips
+        val updated = if (existing.isNotEmpty()) {
+            existing.map { if (it.id == selId || selId == null) it.copy(color = color) else it }
+        } else {
+            listOf(TextClip(id = UUID.randomUUID().toString(), color = color, startTimeMs = _currentPlayheadMs.value))
+        }
+        _currentProject.value = _currentProject.value.copy(textClips = updated)
         saveCurrentProject()
     }
 

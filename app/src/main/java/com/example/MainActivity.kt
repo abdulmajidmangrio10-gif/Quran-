@@ -24,6 +24,7 @@ import com.example.ui.screens.ProjectsScreen
 import com.example.ui.screens.QuranEditorScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.TextCaptionEditorScreen
+import com.example.ui.theme.NeonPurple
 import com.example.ui.theme.QuranGold
 import com.example.ui.theme.QuranVideoEditorTheme
 import com.example.ui.viewmodel.AppScreen
@@ -40,7 +41,7 @@ class MainActivity : ComponentActivity() {
 
             QuranVideoEditorTheme(
                 darkTheme = settings.isDarkTheme,
-                accentColor = QuranGold
+                accentColor = NeonPurple
             ) {
                 QuranVideoEditorApp(viewModel = viewModel)
             }

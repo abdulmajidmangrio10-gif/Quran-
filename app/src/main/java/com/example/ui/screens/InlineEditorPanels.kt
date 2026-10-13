@@ -659,7 +659,7 @@ fun InlineQuranPanel(
     }
 }
 
-// 5. INLINE TEXT PANEL
+// 5. INLINE TEXT PANEL (Matching Reference Screen 10)
 @Composable
 fun InlineTextPanel(
     viewModel: EditorViewModel,
@@ -667,14 +667,15 @@ fun InlineTextPanel(
 ) {
     val textInput by viewModel.textInput.collectAsStateWithLifecycle()
     val textAnimation by viewModel.textAnimation.collectAsStateWithLifecycle()
+    var activeTab by remember { mutableStateOf(0) } // 0: Keyboard, 1: Color, 2: Animation
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(230.dp)
+            .height(240.dp)
             .padding(horizontal = 12.dp)
             .clip(RoundedCornerShape(14.dp))
-            .border(1.dp, QuranGold.copy(alpha = 0.4f), RoundedCornerShape(14.dp)),
+            .border(1.dp, com.example.ui.theme.NeonPurple.copy(alpha = 0.5f), RoundedCornerShape(14.dp)),
         colors = CardDefaults.cardColors(containerColor = DarkCard)
     ) {
         Column(
@@ -682,79 +683,149 @@ fun InlineTextPanel(
                 .fillMaxSize()
                 .padding(8.dp)
         ) {
+            // Header Bar
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Text Overlay", color = QuranGold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-
+                // Sub-tabs: Keyboard, Color, Animation
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("Text", "Color", "Animation").forEachIndexed { idx, label ->
+                        val isSel = activeTab == idx
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isSel) com.example.ui.theme.NeonPurple.copy(alpha = 0.25f) else DarkCardLighter)
+                                .border(1.dp, if (isSel) com.example.ui.theme.NeonPurple else DarkBorder, RoundedCornerShape(8.dp))
+                                .clickable { activeTab = idx }
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                label,
+                                color = if (isSel) com.example.ui.theme.NeonCyan else TextWhite,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Button(
                         onClick = { viewModel.applyEditedText() },
-                        colors = ButtonDefaults.buttonColors(containerColor = QuranGold, contentColor = TextDark),
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.height(30.dp)
+                        colors = ButtonDefaults.buttonColors(containerColor = com.example.ui.theme.NeonPurple, contentColor = TextWhite),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.height(28.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
                     ) {
                         Text("Apply", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
 
-                    IconButton(onClick = onClose, modifier = Modifier.size(28.dp)) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = TextWhite, modifier = Modifier.size(18.dp))
+                    IconButton(onClick = onClose, modifier = Modifier.size(26.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = TextWhite, modifier = Modifier.size(16.dp))
                     }
                 }
             }
 
-            OutlinedTextField(
-                value = textInput,
-                onValueChange = { viewModel.setTextInput(it) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(80.dp),
-                placeholder = { Text("Write Arabic or Urdu text...", color = TextGray, fontSize = 12.sp) },
-                shape = RoundedCornerShape(8.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = DarkCardLighter,
-                    unfocusedContainerColor = DarkCardLighter,
-                    focusedBorderColor = QuranGold,
-                    unfocusedBorderColor = DarkBorder,
-                    focusedTextColor = TextWhite,
-                    unfocusedTextColor = TextWhite
-                )
-            )
+            Spacer(modifier = Modifier.height(8.dp))
 
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // Animation Row
-            Text("Animation", color = TextGray, fontSize = 10.sp)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                listOf(
-                    AnimationType.NONE,
-                    AnimationType.FADE_IN,
-                    AnimationType.SLIDE_UP,
-                    AnimationType.ZOOM_IN,
-                    AnimationType.FADE_OUT
-                ).forEach { anim ->
-                    val isSel = textAnimation == anim
-                    Box(
+            when (activeTab) {
+                0 -> {
+                    // Keyboard Tab: Text Input
+                    OutlinedTextField(
+                        value = textInput,
+                        onValueChange = { viewModel.setTextInput(it) },
                         modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(if (isSel) QuranGold else DarkCardLighter)
-                            .clickable { viewModel.setTextAnimation(anim) }
-                            .padding(horizontal = 8.dp, vertical = 5.dp)
-                    ) {
-                        Text(
-                            text = anim.displayName,
-                            color = if (isSel) TextDark else TextWhite,
-                            fontSize = 11.sp,
-                            fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal
+                            .fillMaxWidth()
+                            .height(130.dp),
+                        placeholder = { Text("Write Arabic, Urdu, or English text overlay...", color = TextGray, fontSize = 12.sp) },
+                        shape = RoundedCornerShape(10.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = DarkCardLighter,
+                            unfocusedContainerColor = DarkCardLighter,
+                            focusedBorderColor = com.example.ui.theme.NeonPurple,
+                            unfocusedBorderColor = DarkBorder,
+                            focusedTextColor = TextWhite,
+                            unfocusedTextColor = TextWhite
                         )
+                    )
+                }
+
+                1 -> {
+                    // Color Tab: Palette Swatches (Matching Screen 10)
+                    Text("Text Color Palette", color = TextGray, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        listOf(
+                            0xFFFFFFFF to "White",
+                            0xFFE6B74A to "Gold",
+                            0xFFA855F7 to "Purple",
+                            0xFF00D2FF to "Cyan",
+                            0xFFEC4899 to "Pink",
+                            0xFFFFD600 to "Yellow",
+                            0xFFEF4444 to "Red",
+                            0xFF10B981 to "Green",
+                            0xFF121216 to "Black"
+                        ).forEach { (colorLong, name) ->
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.clickable { viewModel.setTextColor(colorLong) }
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(colorLong))
+                                        .border(2.dp, DarkBorder, CircleShape)
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(name, color = TextGray, fontSize = 9.sp)
+                            }
+                        }
+                    }
+                }
+
+                2 -> {
+                    // Animation Tab
+                    Text("Motion Animation", color = TextGray, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(
+                            AnimationType.NONE,
+                            AnimationType.FADE_IN,
+                            AnimationType.SLIDE_UP,
+                            AnimationType.SLIDE_DOWN,
+                            AnimationType.ZOOM_IN,
+                            AnimationType.FADE_OUT
+                        ).forEach { anim ->
+                            val isSel = textAnimation == anim
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isSel) com.example.ui.theme.NeonPurple else DarkCardLighter)
+                                    .border(1.dp, if (isSel) com.example.ui.theme.NeonCyan else DarkBorder, RoundedCornerShape(8.dp))
+                                    .clickable { viewModel.setTextAnimation(anim) }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                            ) {
+                                Text(
+                                    text = anim.displayName,
+                                    color = TextWhite,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -966,7 +1037,7 @@ fun InlineStickerPanel(
     }
 }
 
-// 9. INLINE AUDIO & RECITATION PANEL
+// 9. INLINE AUDIO & RECITATION PANEL (Matching Reference Screen 09)
 @Composable
 fun InlineAudioPanel(
     viewModel: EditorViewModel,
@@ -976,6 +1047,8 @@ fun InlineAudioPanel(
     val selectedClipId by viewModel.selectedClipId.collectAsStateWithLifecycle()
     val audioClips = project.audioClips
     val activeClip = audioClips.find { it.id == selectedClipId } ?: audioClips.firstOrNull()
+
+    var activeAudioTab by remember { mutableStateOf(0) } // 0: Music, 1: Effects, 2: Record
 
     val audioPicker = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
@@ -992,13 +1065,20 @@ fun InlineAudioPanel(
         "Peaceful Quran Ambience (Dua)" to 35000L
     )
 
+    val soundEffects = listOf(
+        "Atmospheric Reverb" to 12000L,
+        "Soft Wind Ambient" to 15000L,
+        "Gentle Water Stream" to 20000L,
+        "Breeze Birds Chirping" to 18000L
+    )
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(245.dp)
+            .height(260.dp)
             .padding(horizontal = 12.dp)
             .clip(RoundedCornerShape(14.dp))
-            .border(1.dp, QuranGold.copy(alpha = 0.5f), RoundedCornerShape(14.dp)),
+            .border(1.dp, com.example.ui.theme.NeonPurple.copy(alpha = 0.5f), RoundedCornerShape(14.dp)),
         colors = CardDefaults.cardColors(containerColor = DarkCard)
     ) {
         Column(
@@ -1006,131 +1086,193 @@ fun InlineAudioPanel(
                 .fillMaxSize()
                 .padding(10.dp)
         ) {
+            // Header Bar & Sub-tabs (Music, Effects, Record)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    Text("Audio & Recitation Tracks", color = QuranGold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    Text(
-                        text = if (activeClip != null) "Selected: ${activeClip.title}" else "Add voiceover or background recitation",
-                        color = TextGray,
-                        fontSize = 10.sp,
-                        maxLines = 1
-                    )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("Music", "Effects", "Record").forEachIndexed { idx, label ->
+                        val isSel = activeAudioTab == idx
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isSel) com.example.ui.theme.NeonPurple.copy(alpha = 0.25f) else DarkCardLighter)
+                                .border(1.dp, if (isSel) com.example.ui.theme.NeonPurple else DarkBorder, RoundedCornerShape(8.dp))
+                                .clickable { activeAudioTab = idx }
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                label,
+                                color = if (isSel) com.example.ui.theme.NeonCyan else TextWhite,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
                 }
 
-                IconButton(onClick = onClose, modifier = Modifier.size(28.dp)) {
-                    Icon(Icons.Default.Close, contentDescription = "Close", tint = TextWhite, modifier = Modifier.size(18.dp))
-                }
-            }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Button(
+                        onClick = { audioPicker.launch("audio/*") },
+                        colors = ButtonDefaults.buttonColors(containerColor = DarkCardLighter, contentColor = com.example.ui.theme.NeonCyan),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.height(28.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                    ) {
+                        Text("Extract Audio", fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                    }
 
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // Action Buttons: Import File & Record
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Button(
-                    onClick = { audioPicker.launch("audio/*") },
-                    colors = ButtonDefaults.buttonColors(containerColor = DarkCardLighter, contentColor = QuranGold),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.weight(1f).height(36.dp)
-                ) {
-                    Icon(Icons.Default.MusicNote, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Device Audio", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                }
-
-                Button(
-                    onClick = {
-                        viewModel.addAudio("Voiceover Record")
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC2185B), contentColor = TextWhite),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.weight(1f).height(36.dp)
-                ) {
-                    Icon(Icons.Default.Mic, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Record Voice", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    IconButton(onClick = onClose, modifier = Modifier.size(26.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = TextWhite, modifier = Modifier.size(16.dp))
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Active Clip Volume and Controls
+            when (activeAudioTab) {
+                0 -> {
+                    // Music Tracks List with Waveforms and "Use" buttons
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        items(libraryAudios) { (name, dur) ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(DarkCardLighter)
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                    Icon(Icons.Default.Audiotrack, contentDescription = null, tint = com.example.ui.theme.NeonCyan, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column {
+                                        Text(name, color = TextWhite, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                        Text("Quran Recitation • ${(dur / 1000)}s", color = TextGray, fontSize = 9.5.sp)
+                                    }
+                                }
+                                Button(
+                                    onClick = { viewModel.addAudio(name) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = com.example.ui.theme.NeonPurple, contentColor = TextWhite),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.height(26.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
+                                ) {
+                                    Text("Use", fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                1 -> {
+                    // Sound Effects List
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        items(soundEffects) { (name, dur) ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(DarkCardLighter)
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                    Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = com.example.ui.theme.NeonPurple, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column {
+                                        Text(name, color = TextWhite, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                                        Text("Ambience FX • ${(dur / 1000)}s", color = TextGray, fontSize = 9.5.sp)
+                                    }
+                                }
+                                Button(
+                                    onClick = { viewModel.addAudio(name) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = com.example.ui.theme.NeonCyan, contentColor = TextDark),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.height(26.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
+                                ) {
+                                    Text("Use", fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                2 -> {
+                    // Record Voiceover
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Button(
+                            onClick = { viewModel.addAudio("Voiceover Record") },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
+                            shape = CircleShape,
+                            modifier = Modifier.size(56.dp),
+                            contentPadding = PaddingValues(0.dp)
+                        ) {
+                            Icon(Icons.Default.Mic, contentDescription = null, tint = TextWhite, modifier = Modifier.size(28.dp))
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Tap to Record Voiceover / Dua", color = TextWhite, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("Adds instant voice clip at current playhead", color = TextGray, fontSize = 10.sp)
+                    }
+                }
+            }
+
+            // Volume Control for Active Clip
             if (activeClip != null) {
+                Spacer(modifier = Modifier.height(6.dp))
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
                         .background(DarkCardLighter)
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                        Icon(
-                            imageVector = if (activeClip.volume <= 0f) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
-                            contentDescription = "Volume",
-                            tint = if (activeClip.volume <= 0f) Color(0xFFEF5350) else QuranGold,
-                            modifier = Modifier.size(18.dp)
+                    Icon(
+                        imageVector = if (activeClip.volume <= 0f) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                        contentDescription = "Volume",
+                        tint = com.example.ui.theme.NeonCyan,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Vol: ${(activeClip.volume * 100).toInt()}%", color = TextWhite, fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                    Slider(
+                        value = activeClip.volume,
+                        onValueChange = { viewModel.setAudioClipVolume(activeClip.id, it) },
+                        valueRange = 0f..1f,
+                        modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
+                        colors = SliderDefaults.colors(
+                            thumbColor = com.example.ui.theme.NeonPurple,
+                            activeTrackColor = com.example.ui.theme.NeonPurple,
+                            inactiveTrackColor = DarkBorder
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Volume: ${(activeClip.volume * 100).toInt()}%",
-                            color = TextWhite,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Slider(
-                            value = activeClip.volume,
-                            onValueChange = { viewModel.setAudioClipVolume(activeClip.id, it) },
-                            valueRange = 0f..1f,
-                            modifier = Modifier.weight(1f).padding(horizontal = 6.dp),
-                            colors = SliderDefaults.colors(
-                                thumbColor = QuranGold,
-                                activeTrackColor = QuranGold,
-                                inactiveTrackColor = DarkBorder
-                            )
-                        )
-                    }
-
+                    )
                     IconButton(
                         onClick = { viewModel.deleteSelectedClip() },
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(22.dp)
                     ) {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete Audio", tint = Color(0xFFEF5350), modifier = Modifier.size(16.dp))
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // Preset Islamic Recitations
-            Text("Quran Recitations & Ambience", color = TextGray, fontSize = 10.sp)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                libraryAudios.forEach { (name, _) ->
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(DarkCardLighter)
-                            .clickable { viewModel.addAudio(name) }
-                            .padding(horizontal = 8.dp, vertical = 6.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Audiotrack, contentDescription = null, tint = QuranGold, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(name, color = TextWhite, fontSize = 10.5.sp)
-                        }
+                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color(0xFFEF4444), modifier = Modifier.size(14.dp))
                     }
                 }
             }
