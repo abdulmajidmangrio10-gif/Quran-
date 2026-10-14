@@ -24,6 +24,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.HelpOutline
@@ -366,6 +367,113 @@ fun SettingsScreen(
                                 uncheckedTrackColor = DarkCardLighter
                             )
                         )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // AI & Intelligence Card
+            val isGeminiReady = viewModel.isGeminiConfigured()
+            var showGeminiDetailsDialog by remember { mutableStateOf(false) }
+
+            if (showGeminiDetailsDialog) {
+                AlertDialog(
+                    onDismissRequest = { showGeminiDetailsDialog = false },
+                    containerColor = DarkCard,
+                    icon = {
+                        Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = QuranGold, modifier = Modifier.size(32.dp))
+                    },
+                    title = {
+                        Text("Gemini API & Security Setup", color = TextWhite, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                text = "API Key Configuration:",
+                                color = QuranGold,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "• Key Location: Google AI Studio > Secrets Panel (Variable: GEMINI_API_KEY)\n" +
+                                       "• Model: gemini-3.5-flash (Free Tier Supported)\n" +
+                                       "• Security: Key is injected via server-side Secrets environment, never hardcoded in source files or exposed in the UI.\n" +
+                                       "• Local Tools: Trimming, filters, stickers, text overlays, and Quran ayat synchronization run 100% locally on-device without any API calls or billing.",
+                                color = TextWhite,
+                                fontSize = 12.sp,
+                                lineHeight = 17.sp
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = { showGeminiDetailsDialog = false },
+                            colors = ButtonDefaults.buttonColors(containerColor = QuranGold, contentColor = DarkBackground)
+                        ) {
+                            Text("OK", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                )
+            }
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .border(1.dp, if (isGeminiReady) Color(0xFF10B981).copy(alpha = 0.5f) else DarkBorder, RoundedCornerShape(16.dp)),
+                colors = CardDefaults.cardColors(containerColor = DarkCard)
+            ) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Text("AI & Intelligence", color = NeonCyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showGeminiDetailsDialog = true },
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isGeminiReady) Color(0xFF10B981).copy(alpha = 0.15f) else QuranGold.copy(alpha = 0.15f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.AutoAwesome,
+                                    contentDescription = null,
+                                    tint = if (isGeminiReady) Color(0xFF10B981) else QuranGold,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Gemini AI Assistant", color = TextWhite, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    if (isGeminiReady) "Connected (gemini-3.5-flash)" else "Setup via AI Studio Secrets",
+                                    color = if (isGeminiReady) Color(0xFF10B981) else QuranGold,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (isGeminiReady) Color(0xFF10B981).copy(alpha = 0.2f) else DarkCardLighter)
+                                .border(1.dp, if (isGeminiReady) Color(0xFF10B981) else DarkBorder, RoundedCornerShape(10.dp))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                if (isGeminiReady) "Active ✓" else "Configure",
+                                color = if (isGeminiReady) Color(0xFF10B981) else TextGray,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }

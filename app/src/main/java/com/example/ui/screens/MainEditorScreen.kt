@@ -100,6 +100,10 @@ import com.example.ui.theme.DarkBackground
 import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.DarkCard
 import com.example.ui.theme.DarkCardLighter
+import com.example.ui.theme.EmeraldGreenLight
+import com.example.ui.theme.IslamicCharcoal
+import com.example.ui.theme.PremiumGold
+import com.example.ui.theme.PremiumGoldLight
 import com.example.ui.theme.QuranGold
 import com.example.ui.theme.TextDark
 import com.example.ui.theme.TextGray
@@ -126,6 +130,7 @@ fun MainEditorScreen(
     val activeBottomTool by viewModel.activeBottomTool.collectAsStateWithLifecycle()
     val toolbarFeatures by viewModel.toolbarFeatures.collectAsStateWithLifecycle()
     val editingElementTrack by viewModel.editingElementTrack.collectAsStateWithLifecycle()
+    val showAiChatDialog by viewModel.showAiChatDialog.collectAsStateWithLifecycle()
 
     val totalDurationMs = project.durationMs.coerceAtLeast(1000L)
     val formatTime = { ms: Long ->
@@ -158,6 +163,7 @@ fun MainEditorScreen(
                 onBack = { viewModel.navigateTo(AppScreen.HOME) },
                 onUndo = { viewModel.undo() },
                 onRedo = { viewModel.redo() },
+                onOpenAiChat = { viewModel.openAiChat() },
                 onExport = { viewModel.openModal(EditorModal.EXPORT) }
             )
 
@@ -175,11 +181,18 @@ fun MainEditorScreen(
                     isPlaying = isPlaying,
                     isMuted = isMuted,
                     timeFormatted = "${formatTime(currentPlayheadMs)} / ${formatTime(totalDurationMs)}",
+                    selectedTrack = selectedTrack,
+                    selectedClipId = selectedClipId,
                     viewModel = viewModel,
                     onTogglePlay = { viewModel.togglePlayPause() },
                     onToggleMute = { viewModel.toggleMute() },
                     onToggleFullscreen = { viewModel.toggleFullscreen() },
-                    onTapOverlay = { track, clipId -> viewModel.openElementEditing(track, clipId) }
+                    onTapOverlay = { track, clipId ->
+                        if (clipId != null) {
+                            viewModel.selectTrack(track, clipId)
+                        }
+                        viewModel.openElementEditing(track, clipId)
+                    }
                 )
             }
 
@@ -309,27 +322,37 @@ fun MainEditorScreen(
             } else {
                 // =========================================================
                 // NORMAL MODE:
-                // - Main Editing Toolbar
-                // - Normal Collapsed Timeline showing ONLY the VIDEO Track
+                // When an item is selected on timeline or preview: Show its dedicated contextual toolbar
+                // When no item is selected: Show the general editing toolbar
                 // =========================================================
-                EditorToolbarRow(
-                    features = toolbarFeatures,
-                    activeTool = activeBottomTool,
-                    onToolClick = { toolId ->
-                        when (toolId) {
-                            "timeline" -> viewModel.saveAndCloseElementEditing()
-                            "quran" -> viewModel.openElementEditing(TrackType.QURAN)
-                            "text" -> viewModel.openElementEditing(TrackType.TEXT)
-                            "audio" -> viewModel.openElementEditing(TrackType.AUDIO)
-                            "sticker" -> viewModel.openElementEditing(TrackType.STICKER)
-                            "speed" -> viewModel.openBottomTool(BottomToolType.SPEED)
-                            "canvas" -> viewModel.openBottomTool(BottomToolType.CANVAS)
-                            "adjust" -> viewModel.openBottomTool(BottomToolType.ADJUST)
-                            "filter" -> viewModel.openBottomTool(BottomToolType.FILTER)
-                            "effects" -> viewModel.openBottomTool(BottomToolType.EFFECTS)
+                if (selectedClipId != null && selectedTrack != TrackType.NONE) {
+                    ContextualClipToolbar(
+                        selectedTrack = selectedTrack,
+                        selectedClipId = selectedClipId,
+                        viewModel = viewModel,
+                        onCloseSelection = { viewModel.selectTrack(TrackType.NONE, null) }
+                    )
+                } else {
+                    EditorToolbarRow(
+                        features = toolbarFeatures,
+                        activeTool = activeBottomTool,
+                        onToolClick = { toolId ->
+                            when (toolId) {
+                                "ai_edit" -> viewModel.openAiChat()
+                                "timeline" -> viewModel.saveAndCloseElementEditing()
+                                "quran" -> viewModel.openElementEditing(TrackType.QURAN)
+                                "text" -> viewModel.openElementEditing(TrackType.TEXT)
+                                "audio" -> viewModel.openElementEditing(TrackType.AUDIO)
+                                "sticker" -> viewModel.openElementEditing(TrackType.STICKER)
+                                "speed" -> viewModel.openBottomTool(BottomToolType.SPEED)
+                                "canvas" -> viewModel.openBottomTool(BottomToolType.CANVAS)
+                                "adjust" -> viewModel.openBottomTool(BottomToolType.ADJUST)
+                                "filter" -> viewModel.openBottomTool(BottomToolType.FILTER)
+                                "effects" -> viewModel.openBottomTool(BottomToolType.EFFECTS)
+                            }
                         }
-                    }
-                )
+                    )
+                }
 
                 when (activeBottomTool) {
                     BottomToolType.SPEED -> InlineSpeedPanel(
@@ -369,6 +392,14 @@ fun MainEditorScreen(
                 }
             }
         }
+
+        // AI Chat / Edit with AI Modal Sheet
+        if (showAiChatDialog) {
+            AiEditChatSheet(
+                viewModel = viewModel,
+                onDismiss = { viewModel.closeAiChat() }
+            )
+        }
     }
 }
 
@@ -380,13 +411,14 @@ fun EditorTopBar(
     onBack: () -> Unit,
     onUndo: () -> Unit,
     onRedo: () -> Unit,
+    onOpenAiChat: () -> Unit,
     onExport: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(48.dp)
-            .padding(horizontal = 12.dp),
+            .height(50.dp)
+            .padding(horizontal = 10.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -402,7 +434,7 @@ fun EditorTopBar(
         }
 
         Row(
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onUndo, modifier = Modifier.size(32.dp)) {
@@ -412,26 +444,44 @@ fun EditorTopBar(
             IconButton(onClick = onRedo, modifier = Modifier.size(32.dp)) {
                 Icon(Icons.AutoMirrored.Filled.Redo, contentDescription = "Redo", tint = TextWhite, modifier = Modifier.size(20.dp))
             }
+
+            // AI Edit Button
+            Button(
+                onClick = onOpenAiChat,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = EmeraldGreenLight,
+                    contentColor = TextWhite
+                ),
+                shape = RoundedCornerShape(20.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                modifier = Modifier
+                    .height(32.dp)
+                    .testTag("ai_edit_chat_button")
+            ) {
+                Icon(Icons.Default.AutoAwesome, contentDescription = "AI", modifier = Modifier.size(15.dp), tint = TextWhite)
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("AI Edit", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+            }
         }
 
         Button(
             onClick = onExport,
             colors = ButtonDefaults.buttonColors(
-                containerColor = com.example.ui.theme.NeonPurple,
-                contentColor = TextWhite
+                containerColor = PremiumGold,
+                contentColor = IslamicCharcoal
             ),
             shape = RoundedCornerShape(20.dp),
             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
             modifier = Modifier
-                .height(34.dp)
+                .height(32.dp)
                 .testTag("export_button")
         ) {
-            Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+            Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(15.dp), tint = IslamicCharcoal)
             Spacer(modifier = Modifier.width(4.dp))
             Text(
                 text = "Export",
                 fontWeight = FontWeight.Bold,
-                fontSize = 12.5.sp
+                fontSize = 12.sp
             )
         }
     }
@@ -593,6 +643,7 @@ fun EditorToolbarRow(
 ) {
     val iconForId: (String) -> ImageVector = { id ->
         when (id) {
+            "ai_edit" -> Icons.Default.AutoAwesome
             "quran" -> Icons.Default.MenuBook
             "text" -> Icons.Default.TextFields
             "audio" -> Icons.Default.Audiotrack
@@ -669,6 +720,8 @@ fun VideoPreviewCard(
     isPlaying: Boolean,
     isMuted: Boolean,
     timeFormatted: String,
+    selectedTrack: TrackType = TrackType.NONE,
+    selectedClipId: String? = null,
     viewModel: EditorViewModel,
     onTogglePlay: () -> Unit,
     onToggleMute: () -> Unit,
@@ -828,22 +881,37 @@ fun VideoPreviewCard(
                                 } catch (_: Exception) {}
                             }
                         )
-                    } else if (currentVideoClip?.isBlank == true) {
-                        // Real Blank Canvas Clip
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(Color(0xFF0E0E14)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "Blank Canvas",
-                                color = TextGray,
-                                fontSize = 13.sp
+                    } else if (currentVideoClip?.isBlank == true || project.videoUri == null) {
+                        val primaryImage = project.imageClips.find {
+                            currentPlayheadMs >= it.startTimeMs && currentPlayheadMs <= (it.startTimeMs + it.durationMs)
+                        } ?: project.imageClips.firstOrNull()
+
+                        if (primaryImage != null && project.videoUri == null) {
+                            // Real Photo Project Canvas
+                            AsyncImage(
+                                model = primaryImage.uri,
+                                contentDescription = "Photo Canvas",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = androidx.compose.ui.layout.ContentScale.Fit
                             )
+                        } else {
+                            // Blank Canvas
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color(0xFF0E0E14)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "Blank Canvas\nTap '+' on Timeline to add Video or Photo",
+                                    color = TextGray,
+                                    fontSize = 13.sp,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
                         }
                     } else {
-                        // Nature placeholder when no video is selected yet
+                        // Placeholder when no media loaded yet
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -859,7 +927,7 @@ fun VideoPreviewCard(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "No Video Selected\nTap '+' on Timeline to add Video",
+                                text = "No Video Selected\nTap '+' on Timeline to add Video or Photo",
                                 color = TextGray,
                                 fontSize = 12.sp,
                                 textAlign = TextAlign.Center
@@ -939,8 +1007,9 @@ fun VideoPreviewCard(
                     currentPlayheadMs >= it.startTimeMs && currentPlayheadMs <= (it.startTimeMs + it.durationMs)
                 }
 
-                // Render Active Quran Calligraphy
+                // Render Active Quran Calligraphy with Interactive Selection & Handles
                 if (activeQuran != null) {
+                    val isQuranSelected = selectedTrack == TrackType.QURAN && (selectedClipId == activeQuran.id || selectedClipId == null)
                     val qProgress = ((currentPlayheadMs - activeQuran.startTimeMs).toFloat() / activeQuran.durationMs.coerceAtLeast(1000L).toFloat()).coerceIn(0f, 1f)
                     val qAlpha = when (activeQuran.animation) {
                         com.example.data.model.AnimationType.FADE_IN -> (qProgress / 0.15f).coerceIn(0f, 1f)
@@ -958,60 +1027,56 @@ fun VideoPreviewCard(
                         else -> 1f
                     }
 
-                    val qPosX = activeQuran.positionX
-                    val qPosY = activeQuran.positionY
-                    val qUserScale = activeQuran.scale
-                    val qUserRotation = activeQuran.rotation
-
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(0.9f)
-                            .graphicsLayer {
-                                alpha = qAlpha
-                                translationX = (qPosX - 0.5f) * 320f
-                                translationY = (qPosY - 0.5f) * 320f + qOffsetY
-                                scaleX = qScale * qUserScale
-                                scaleY = qScale * qUserScale
-                                rotationZ = qUserRotation
-                            }
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xAA0A0A0E))
-                            .border(1.dp, QuranGold.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-                            .padding(horizontal = 14.dp, vertical = 10.dp)
-                            .pointerInput(activeQuran.id) {
-                                detectDragGestures { change, dragAmount ->
-                                    change.consume()
-                                    viewModel.moveQuranClipPosition(activeQuran.id, dragAmount.x / 400f, dragAmount.y / 400f)
-                                }
-                            }
-                            .clickable {
-                                onTapOverlay(TrackType.QURAN, activeQuran.id)
-                            },
-                        contentAlignment = Alignment.Center
+                    InteractivePreviewOverlayBox(
+                        isSelected = isQuranSelected,
+                        positionX = activeQuran.positionX,
+                        positionY = activeQuran.positionY,
+                        scale = activeQuran.scale * qScale,
+                        rotation = activeQuran.rotation,
+                        onTap = { onTapOverlay(TrackType.QURAN, activeQuran.id) },
+                        onMove = { dx, dy -> viewModel.moveQuranClipPosition(activeQuran.id, dx, dy) },
+                        onScaleChange = { newScale -> viewModel.scaleQuranClip(activeQuran.id, newScale) },
+                        onRotateChange = { newRot -> viewModel.rotateQuranClip(activeQuran.id, 15f) },
+                        modifier = Modifier.fillMaxWidth(0.9f)
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = activeQuran.arabicText,
-                                color = Color(activeQuran.arabicColor),
-                                fontSize = activeQuran.fontSize.sp,
-                                fontWeight = FontWeight.Bold,
-                                textAlign = TextAlign.Center,
-                                lineHeight = (activeQuran.fontSize * 1.5f).sp
-                            )
-                            Spacer(modifier = Modifier.height(3.dp))
-                            Text(
-                                text = activeQuran.urduTranslation,
-                                color = Color(activeQuran.translationColor),
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium,
-                                textAlign = TextAlign.Center
-                            )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .graphicsLayer {
+                                    alpha = qAlpha
+                                    translationY = qOffsetY
+                                }
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0xCC0D0B14))
+                                .border(1.dp, PremiumGold.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = activeQuran.arabicText,
+                                    color = Color(activeQuran.arabicColor),
+                                    fontSize = activeQuran.fontSize.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Center,
+                                    lineHeight = (activeQuran.fontSize * 1.5f).sp
+                                )
+                                Spacer(modifier = Modifier.height(3.dp))
+                                Text(
+                                    text = activeQuran.urduTranslation,
+                                    color = Color(activeQuran.translationColor),
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
                         }
                     }
                 }
 
-                // Render Active Text
+                // Render Active Text with Interactive Selection & Handles
                 if (activeText != null) {
+                    val isTextSelected = selectedTrack == TrackType.TEXT && (selectedClipId == activeText.id || selectedClipId == null)
                     val tProgress = ((currentPlayheadMs - activeText.startTimeMs).toFloat() / activeText.durationMs.coerceAtLeast(1000L).toFloat()).coerceIn(0f, 1f)
                     val tAlpha = when (activeText.animation) {
                         com.example.data.model.AnimationType.FADE_IN -> (tProgress / 0.15f).coerceIn(0f, 1f)
@@ -1023,11 +1088,6 @@ fun VideoPreviewCard(
                         com.example.data.model.AnimationType.SLIDE_DOWN -> -(1f - (tProgress / 0.15f).coerceIn(0f, 1f)) * 35f
                         else -> 0f
                     }
-
-                    val tPosX = activeText.positionX
-                    val tPosY = activeText.positionY
-                    val tUserScale = activeText.scale
-                    val tUserRotation = activeText.rotation
                     val template = activeText.templateId
 
                     val containerBg = when (template) {
@@ -1045,7 +1105,7 @@ fun VideoPreviewCard(
                         "cap_classic_black" -> Color.Black
                         "cap_light_yellow" -> Color(0xFFFFEB3B)
                         "cap_purple_label" -> Color(0xFFB39DDB)
-                        else -> Color(0x99000000)
+                        else -> if (activeText.backgroundColor != null) Color(activeText.backgroundColor) else Color(0x99000000)
                     }
 
                     val textColor = when (template) {
@@ -1065,139 +1125,101 @@ fun VideoPreviewCard(
                         else -> Color(activeText.color)
                     }
 
-                    val textFont = when (template) {
-                        "cap_typewriter", "cap_pixel_style", "lbl_pixel_bubble" -> FontFamily.Monospace
-                        "special_golden_time" -> FontFamily.Serif
-                        else -> FontFamily.Default
-                    }
-
-                    val borderColor = when (template) {
-                        "title_peach" -> Color(0xFFFFCCBC)
-                        "special_neon_lights", "lbl_green_brush" -> Color(0xFF76FF03)
-                        "cap_unique_neon" -> Color(0xFF00E5FF)
-                        "special_golden_time" -> Color(0xFFFFD54F)
-                        else -> Color.White.copy(alpha = 0.6f)
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(0.85f)
-                            .graphicsLayer {
-                                alpha = tAlpha
-                                translationX = (tPosX - 0.5f) * 320f
-                                translationY = (tPosY - 0.5f) * 320f + tOffsetY
-                                scaleX = tUserScale
-                                scaleY = tUserScale
-                                rotationZ = tUserRotation
-                            }
-                            .border(1.dp, borderColor, RoundedCornerShape(8.dp))
-                            .background(containerBg, RoundedCornerShape(8.dp))
-                            .padding(12.dp)
-                            .pointerInput(activeText.id) {
-                                detectDragGestures { change, dragAmount ->
-                                    change.consume()
-                                    viewModel.moveTextClipPosition(activeText.id, dragAmount.x / 400f, dragAmount.y / 400f)
-                                }
-                            }
-                            .clickable {
-                                onTapOverlay(TrackType.TEXT, activeText.id)
-                            },
-                        contentAlignment = Alignment.Center
+                    InteractivePreviewOverlayBox(
+                        isSelected = isTextSelected,
+                        positionX = activeText.positionX,
+                        positionY = activeText.positionY,
+                        scale = activeText.scale,
+                        rotation = activeText.rotation,
+                        onTap = { onTapOverlay(TrackType.TEXT, activeText.id) },
+                        onMove = { dx, dy -> viewModel.moveTextClipPosition(activeText.id, dx, dy) },
+                        onScaleChange = { newScale -> viewModel.scaleTextClip(activeText.id, newScale) },
+                        onRotateChange = { newRot -> viewModel.rotateTextClip(activeText.id, 15f) },
+                        modifier = Modifier.fillMaxWidth(0.85f)
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            if (template == "special_breaking_news") {
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(3.dp))
-                                        .background(Color.White)
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                ) {
-                                    Text("BREAKING NEWS", color = Color(0xFFD32F2F), fontSize = 9.sp, fontWeight = FontWeight.Black)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .graphicsLayer {
+                                    alpha = tAlpha
+                                    translationY = tOffsetY
                                 }
-                                Spacer(modifier = Modifier.height(4.dp))
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(containerBg)
+                                .padding(12.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                if (template == "special_breaking_news") {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(3.dp))
+                                            .background(Color.White)
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text("BREAKING NEWS", color = Color(0xFFD32F2F), fontSize = 9.sp, fontWeight = FontWeight.Black)
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                }
+                                Text(
+                                    text = when (template) {
+                                        "lbl_warning" -> "⚠️ ${activeText.text}"
+                                        "lbl_cartoon_eyes" -> "👀 ${activeText.text}"
+                                        "lbl_green_leaf" -> "🍃 ${activeText.text}"
+                                        "lbl_click_button" -> "👆 ${activeText.text}"
+                                        else -> activeText.text
+                                    },
+                                    color = textColor,
+                                    fontSize = activeText.size.sp,
+                                    fontWeight = if (activeText.isBold || template != null) FontWeight.Bold else FontWeight.Normal,
+                                    textAlign = TextAlign.Center
+                                )
                             }
-                            Text(
-                                text = when (template) {
-                                    "lbl_warning" -> "⚠️ ${activeText.text}"
-                                    "lbl_cartoon_eyes" -> "👀 ${activeText.text}"
-                                    "lbl_green_leaf" -> "🍃 ${activeText.text}"
-                                    "lbl_click_button" -> "👆 ${activeText.text}"
-                                    else -> activeText.text
-                                },
-                                color = textColor,
-                                fontSize = activeText.size.sp,
-                                fontWeight = if (activeText.isBold || template != null) FontWeight.Bold else FontWeight.Normal,
-                                fontFamily = textFont,
-                                textAlign = TextAlign.Center
-                            )
                         }
                     }
                 }
 
-                // Render Active Sticker
+                // Render Active Sticker with Interactive Selection & Handles
                 if (activeSticker != null) {
-                    val sPosX = activeSticker.positionX
-                    val sPosY = activeSticker.positionY
-                    val sUserScale = activeSticker.scale
-
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .graphicsLayer {
-                                translationX = (sPosX - 0.5f) * 320f
-                                translationY = (sPosY - 0.5f) * 320f
-                                scaleX = sUserScale
-                                scaleY = sUserScale
-                            }
-                            .pointerInput(activeSticker.id) {
-                                detectDragGestures { change, dragAmount ->
-                                    change.consume()
-                                    viewModel.moveStickerPosition(activeSticker.id, dragAmount.x / 400f, dragAmount.y / 400f)
-                                }
-                            }
-                            .clickable {
-                                onTapOverlay(TrackType.STICKER, activeSticker.id)
-                            },
-                        contentAlignment = Alignment.Center
+                    val isStickerSelected = selectedTrack == TrackType.STICKER && (selectedClipId == activeSticker.id || selectedClipId == null)
+                    InteractivePreviewOverlayBox(
+                        isSelected = isStickerSelected,
+                        positionX = activeSticker.positionX,
+                        positionY = activeSticker.positionY,
+                        scale = activeSticker.scale,
+                        rotation = 0f,
+                        onTap = { onTapOverlay(TrackType.STICKER, activeSticker.id) },
+                        onMove = { dx, dy -> viewModel.moveStickerPosition(activeSticker.id, dx, dy) },
+                        onScaleChange = { },
+                        onRotateChange = { }
                     ) {
                         Text(
                             text = activeSticker.emojiOrIcon,
-                            fontSize = 34.sp
+                            fontSize = 36.sp
                         )
                     }
                 }
 
-                // Render Active Image
-                if (activeImage != null) {
-                    val iPosX = activeImage.positionX
-                    val iPosY = activeImage.positionY
-                    val iUserScale = activeImage.scale
-
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .graphicsLayer {
-                                translationX = (iPosX - 0.5f) * 320f
-                                translationY = (iPosY - 0.5f) * 320f
-                                scaleX = iUserScale
-                                scaleY = iUserScale
-                            }
-                            .pointerInput(activeImage.id) {
-                                detectDragGestures { change, dragAmount ->
-                                    change.consume()
-                                    viewModel.moveImagePosition(activeImage.id, dragAmount.x / 400f, dragAmount.y / 400f)
-                                }
-                            }
-                            .clickable {
-                                onTapOverlay(TrackType.IMAGE, activeImage.id)
-                            }
-                            .size(75.dp)
-                            .clip(RoundedCornerShape(8.dp))
+                // Render Active Image Overlay with Interactive Selection & Handles
+                if (activeImage != null && (project.videoUri != null || project.imageClips.size > 1)) {
+                    val isImageSelected = selectedTrack == TrackType.IMAGE && (selectedClipId == activeImage.id || selectedClipId == null)
+                    InteractivePreviewOverlayBox(
+                        isSelected = isImageSelected,
+                        positionX = activeImage.positionX,
+                        positionY = activeImage.positionY,
+                        scale = activeImage.scale,
+                        rotation = activeImage.rotation,
+                        onTap = { onTapOverlay(TrackType.IMAGE, activeImage.id) },
+                        onMove = { dx, dy -> viewModel.moveImagePosition(activeImage.id, dx, dy) },
+                        onScaleChange = { newScale -> viewModel.scaleImageClip(activeImage.id, newScale) },
+                        onRotateChange = { newRot -> viewModel.rotateImageClip(activeImage.id, 90f) }
                     ) {
                         AsyncImage(
                             model = activeImage.uri,
                             contentDescription = "Image Overlay",
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier
+                                .size(110.dp)
+                                .clip(RoundedCornerShape(8.dp))
                         )
                     }
                 }

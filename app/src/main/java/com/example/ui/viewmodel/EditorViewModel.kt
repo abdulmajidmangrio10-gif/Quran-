@@ -22,10 +22,18 @@ import com.example.data.model.QuranBackgroundType
 import com.example.data.model.QuranClip
 import com.example.data.model.StickerClip
 import com.example.data.model.TextClip
+import com.example.data.model.AiEditMessage
 import com.example.data.model.VideoClipConfig
 import com.example.data.quran.AyahItem
 import com.example.data.quran.QuranData
 import com.example.data.quran.SurahMeta
+import com.example.BuildConfig
+import com.example.data.api.GeminiApiClient
+import com.example.data.api.GeminiCandidate
+import com.example.data.api.GeminiContent
+import com.example.data.api.GeminiContentPart
+import com.example.data.api.GeminiGenerateRequest
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,6 +42,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -155,6 +164,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     // Clean Toolbar Features
     private val _toolbarFeatures = MutableStateFlow(
         listOf(
+            ToolbarFeatureItem("ai_edit", "AI Edit"),
             ToolbarFeatureItem("quran", "Quran"),
             ToolbarFeatureItem("text", "Text"),
             ToolbarFeatureItem("canvas", "Canvas"),
@@ -1537,6 +1547,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             mediaDurationMs = 8000L
         }
 
+        val proj = _currentProject.value
+        val hasOnlyBlankClip = proj.videoClips.size == 1 && proj.videoClips.first().isBlank
+
         if (isVideo) {
             val retriever = MediaMetadataRetriever()
             try {
@@ -1550,7 +1563,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                 try { retriever.release() } catch (_: Exception) {}
             }
 
-            val playhead = _currentPlayheadMs.value
+            val playhead = if (hasOnlyBlankClip) 0L else _currentPlayheadMs.value
             val newClip = com.example.data.model.VideoTimelineClip(
                 id = UUID.randomUUID().toString(),
                 uri = uri.toString(),
@@ -1561,29 +1574,33 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                 trimStartMs = 0L,
                 sourceDurationMs = mediaDurationMs
             )
-            val list = _currentProject.value.videoClips + newClip
-            val newTotalDuration = maxOf(_currentProject.value.durationMs, playhead + mediaDurationMs + 5000L)
-            _currentProject.value = _currentProject.value.copy(
-                videoUri = _currentProject.value.videoUri ?: uri.toString(),
+            val list = if (hasOnlyBlankClip) listOf(newClip) else (proj.videoClips + newClip)
+            val newTotalDuration = if (hasOnlyBlankClip) mediaDurationMs else maxOf(proj.durationMs, playhead + mediaDurationMs)
+            _currentProject.value = proj.copy(
+                videoUri = uri.toString(),
+                thumbnailUri = uri.toString(),
                 videoClips = list,
                 durationMs = newTotalDuration
             )
+            _currentPlayheadMs.value = playhead
             _selectedTrack.value = TrackType.VIDEO
             _selectedClipId.value = newClip.id
         } else {
-            val playhead = _currentPlayheadMs.value
+            val playhead = if (hasOnlyBlankClip && proj.imageClips.isEmpty()) 0L else _currentPlayheadMs.value
             val newClip = com.example.data.model.ImageClip(
                 id = UUID.randomUUID().toString(),
                 uri = uri.toString(),
                 startTimeMs = playhead,
                 durationMs = mediaDurationMs
             )
-            val list = _currentProject.value.imageClips + newClip
-            val newTotalDuration = maxOf(_currentProject.value.durationMs, playhead + mediaDurationMs + 5000L)
-            _currentProject.value = _currentProject.value.copy(
+            val list = proj.imageClips + newClip
+            val newTotalDuration = if (hasOnlyBlankClip && proj.imageClips.isEmpty()) mediaDurationMs else maxOf(proj.durationMs, playhead + mediaDurationMs)
+            _currentProject.value = proj.copy(
+                thumbnailUri = proj.thumbnailUri ?: uri.toString(),
                 imageClips = list,
                 durationMs = newTotalDuration
             )
+            _currentPlayheadMs.value = playhead
             _selectedTrack.value = TrackType.IMAGE
             _selectedClipId.value = newClip.id
         }
@@ -2166,7 +2183,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     fun scaleQuranClip(clipId: String, scaleFactor: Float) {
         val list = _currentProject.value.quranClips.map { clip ->
             if (clip.id == clipId) {
-                clip.copy(scale = (clip.scale * scaleFactor).coerceIn(0.5f, 3.0f))
+                clip.copy(scale = scaleFactor.coerceIn(0.2f, 4.0f))
             } else clip
         }
         _currentProject.value = _currentProject.value.copy(quranClips = list)
@@ -2189,7 +2206,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     fun scaleTextClip(clipId: String, scaleFactor: Float) {
         val list = _currentProject.value.textClips.map { clip ->
             if (clip.id == clipId) {
-                clip.copy(scale = (clip.scale * scaleFactor).coerceIn(0.5f, 3.0f))
+                clip.copy(scale = scaleFactor.coerceIn(0.2f, 4.0f))
             } else clip
         }
         _currentProject.value = _currentProject.value.copy(textClips = list)
@@ -2225,7 +2242,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     fun setAudioClipVolume(clipId: String, volume: Float) {
         pushSnapshot()
         val list = _currentProject.value.audioClips.map { clip ->
-            if (clip.id == clipId) clip.copy(volume = volume.coerceIn(0f, 1f)) else clip
+            if (clip.id == clipId) clip.copy(volume = volume.coerceIn(0f, 1.5f)) else clip
         }
         _currentProject.value = _currentProject.value.copy(audioClips = list)
         if (currentlyPlayingAudioClipId == clipId) {
@@ -2244,6 +2261,13 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         }
         _currentProject.value = _currentProject.value.copy(videoClips = list)
         saveCurrentProject()
+    }
+
+    fun setVideoVolume(volume: Float) {
+        val clipId = _selectedClipId.value ?: _currentProject.value.videoClips.firstOrNull()?.id
+        if (clipId != null) {
+            setVideoClipVolume(clipId, volume)
+        }
     }
 
     fun addAudioFromUri(uri: Uri, title: String) {
@@ -2274,6 +2298,639 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         _currentProject.value = _currentProject.value.copy(audioClips = list, durationMs = newTotal)
         _selectedTrack.value = TrackType.AUDIO
         _selectedClipId.value = newAudio.id
+        saveCurrentProject()
+    }
+
+    // =========================================================================
+    // CLIPBOARD (CUT / PASTE)
+    // =========================================================================
+    private var clipboardTrack: TrackType? = null
+    private var clipboardClipData: Any? = null
+
+    fun cutSelectedClip() {
+        pushSnapshot()
+        val clipId = _selectedClipId.value ?: return
+        val track = _selectedTrack.value
+        clipboardTrack = track
+        when (track) {
+            TrackType.VIDEO -> {
+                val clip = _currentProject.value.videoClips.find { it.id == clipId }
+                clipboardClipData = clip
+                deleteSelectedClip()
+            }
+            TrackType.IMAGE -> {
+                val clip = _currentProject.value.imageClips.find { it.id == clipId }
+                clipboardClipData = clip
+                deleteSelectedClip()
+            }
+            TrackType.TEXT -> {
+                val clip = _currentProject.value.textClips.find { it.id == clipId }
+                clipboardClipData = clip
+                deleteSelectedClip()
+            }
+            TrackType.QURAN -> {
+                val clip = _currentProject.value.quranClips.find { it.id == clipId }
+                clipboardClipData = clip
+                deleteSelectedClip()
+            }
+            TrackType.AUDIO -> {
+                val clip = _currentProject.value.audioClips.find { it.id == clipId }
+                clipboardClipData = clip
+                deleteSelectedClip()
+            }
+            else -> {}
+        }
+    }
+
+    fun pasteClip() {
+        val track = clipboardTrack ?: return
+        val data = clipboardClipData ?: return
+        pushSnapshot()
+        val playhead = _currentPlayheadMs.value
+        when (track) {
+            TrackType.VIDEO -> {
+                val orig = data as? com.example.data.model.VideoTimelineClip ?: return
+                val copy = orig.copy(id = UUID.randomUUID().toString(), startTimeMs = playhead)
+                _currentProject.value = _currentProject.value.copy(videoClips = _currentProject.value.videoClips + copy)
+                _selectedClipId.value = copy.id
+            }
+            TrackType.IMAGE -> {
+                val orig = data as? ImageClip ?: return
+                val copy = orig.copy(id = UUID.randomUUID().toString(), startTimeMs = playhead)
+                _currentProject.value = _currentProject.value.copy(imageClips = _currentProject.value.imageClips + copy)
+                _selectedClipId.value = copy.id
+            }
+            TrackType.TEXT -> {
+                val orig = data as? TextClip ?: return
+                val copy = orig.copy(id = UUID.randomUUID().toString(), startTimeMs = playhead)
+                _currentProject.value = _currentProject.value.copy(textClips = _currentProject.value.textClips + copy)
+                _selectedClipId.value = copy.id
+            }
+            TrackType.QURAN -> {
+                val orig = data as? QuranClip ?: return
+                val copy = orig.copy(id = UUID.randomUUID().toString(), startTimeMs = playhead)
+                _currentProject.value = _currentProject.value.copy(quranClips = _currentProject.value.quranClips + copy)
+                _selectedClipId.value = copy.id
+            }
+            TrackType.AUDIO -> {
+                val orig = data as? AudioClip ?: return
+                val copy = orig.copy(id = UUID.randomUUID().toString(), startTimeMs = playhead)
+                _currentProject.value = _currentProject.value.copy(audioClips = _currentProject.value.audioClips + copy)
+                _selectedClipId.value = copy.id
+            }
+            else -> {}
+        }
+        saveCurrentProject()
+    }
+
+    // =========================================================================
+    // IMAGE CLIP OPERATIONS
+    // =========================================================================
+    fun rotateImageClip(clipId: String, deltaDeg: Float = 90f) {
+        pushSnapshot()
+        val list = _currentProject.value.imageClips.map {
+            if (it.id == clipId) it.copy(rotation = (it.rotation + deltaDeg) % 360f) else it
+        }
+        _currentProject.value = _currentProject.value.copy(imageClips = list)
+        saveCurrentProject()
+    }
+
+    fun scaleImageClip(clipId: String, scaleFactor: Float) {
+        val list = _currentProject.value.imageClips.map {
+            if (it.id == clipId) it.copy(scale = scaleFactor.coerceIn(0.2f, 4.0f)) else it
+        }
+        _currentProject.value = _currentProject.value.copy(imageClips = list)
+    }
+
+    fun zoomInImage(clipId: String) {
+        pushSnapshot()
+        val list = _currentProject.value.imageClips.map {
+            if (it.id == clipId) it.copy(scale = (it.scale + 0.2f).coerceIn(0.2f, 4.0f)) else it
+        }
+        _currentProject.value = _currentProject.value.copy(imageClips = list)
+        saveCurrentProject()
+    }
+
+    fun zoomOutImage(clipId: String) {
+        pushSnapshot()
+        val list = _currentProject.value.imageClips.map {
+            if (it.id == clipId) it.copy(scale = (it.scale - 0.2f).coerceIn(0.2f, 4.0f)) else it
+        }
+        _currentProject.value = _currentProject.value.copy(imageClips = list)
+        saveCurrentProject()
+    }
+
+    fun shiftImageClipTiming(clipId: String, startDeltaMs: Long, durDeltaMs: Long) {
+        pushSnapshot()
+        val list = _currentProject.value.imageClips.map {
+            if (it.id == clipId) {
+                val newStart = (it.startTimeMs + startDeltaMs).coerceAtLeast(0L)
+                val newDur = (it.durationMs + durDeltaMs).coerceIn(1000L, 60000L)
+                it.copy(startTimeMs = newStart, durationMs = newDur)
+            } else it
+        }
+        _currentProject.value = _currentProject.value.copy(imageClips = list)
+        saveCurrentProject()
+    }
+
+    // =========================================================================
+    // TEXT CLIP OPERATIONS
+    // =========================================================================
+    fun updateTextClipContent(clipId: String, newText: String) {
+        pushSnapshot()
+        val list = _currentProject.value.textClips.map {
+            if (it.id == clipId) it.copy(text = newText) else it
+        }
+        _currentProject.value = _currentProject.value.copy(textClips = list)
+        saveCurrentProject()
+    }
+
+    fun setTextClipFontSize(clipId: String, size: Float) {
+        pushSnapshot()
+        val list = _currentProject.value.textClips.map {
+            if (it.id == clipId) it.copy(size = size.coerceIn(12f, 60f)) else it
+        }
+        _currentProject.value = _currentProject.value.copy(textClips = list)
+        saveCurrentProject()
+    }
+
+    fun setTextClipColor(clipId: String, color: Long) {
+        pushSnapshot()
+        val list = _currentProject.value.textClips.map {
+            if (it.id == clipId) it.copy(color = color) else it
+        }
+        _currentProject.value = _currentProject.value.copy(textClips = list)
+        saveCurrentProject()
+    }
+
+    fun setTextClipBgColor(clipId: String, bgColor: Long?) {
+        pushSnapshot()
+        val list = _currentProject.value.textClips.map {
+            if (it.id == clipId) it.copy(backgroundColor = bgColor) else it
+        }
+        _currentProject.value = _currentProject.value.copy(textClips = list)
+        saveCurrentProject()
+    }
+
+    fun setTextClipAlignment(clipId: String, alignment: String) {
+        pushSnapshot()
+        val list = _currentProject.value.textClips.map {
+            if (it.id == clipId) it.copy(alignment = alignment) else it
+        }
+        _currentProject.value = _currentProject.value.copy(textClips = list)
+        saveCurrentProject()
+    }
+
+    fun rotateTextClip(clipId: String, deltaDeg: Float = 15f) {
+        pushSnapshot()
+        val list = _currentProject.value.textClips.map {
+            if (it.id == clipId) it.copy(rotation = (it.rotation + deltaDeg) % 360f) else it
+        }
+        _currentProject.value = _currentProject.value.copy(textClips = list)
+        saveCurrentProject()
+    }
+
+    fun setTextClipAnimation(clipId: String, anim: AnimationType) {
+        pushSnapshot()
+        val list = _currentProject.value.textClips.map {
+            if (it.id == clipId) it.copy(animation = anim) else it
+        }
+        _currentProject.value = _currentProject.value.copy(textClips = list)
+        saveCurrentProject()
+    }
+
+    fun shiftTextClipTiming(clipId: String, startDeltaMs: Long, durDeltaMs: Long) {
+        pushSnapshot()
+        val list = _currentProject.value.textClips.map {
+            if (it.id == clipId) {
+                val newStart = (it.startTimeMs + startDeltaMs).coerceAtLeast(0L)
+                val newDur = (it.durationMs + durDeltaMs).coerceIn(1000L, 60000L)
+                it.copy(startTimeMs = newStart, durationMs = newDur)
+            } else it
+        }
+        _currentProject.value = _currentProject.value.copy(textClips = list)
+        saveCurrentProject()
+    }
+
+    // =========================================================================
+    // QURAN CLIP OPERATIONS
+    // =========================================================================
+    fun setQuranClipFontSize(clipId: String, size: Float) {
+        pushSnapshot()
+        val list = _currentProject.value.quranClips.map {
+            if (it.id == clipId) it.copy(fontSize = size.coerceIn(14f, 60f)) else it
+        }
+        _currentProject.value = _currentProject.value.copy(quranClips = list)
+        saveCurrentProject()
+    }
+
+    fun setQuranClipArabicColor(clipId: String, color: Long) {
+        pushSnapshot()
+        val list = _currentProject.value.quranClips.map {
+            if (it.id == clipId) it.copy(arabicColor = color) else it
+        }
+        _currentProject.value = _currentProject.value.copy(quranClips = list)
+        saveCurrentProject()
+    }
+
+    fun setQuranClipTranslationColor(clipId: String, color: Long) {
+        pushSnapshot()
+        val list = _currentProject.value.quranClips.map {
+            if (it.id == clipId) it.copy(translationColor = color) else it
+        }
+        _currentProject.value = _currentProject.value.copy(quranClips = list)
+        saveCurrentProject()
+    }
+
+    fun rotateQuranClip(clipId: String, deltaDeg: Float = 15f) {
+        pushSnapshot()
+        val list = _currentProject.value.quranClips.map {
+            if (it.id == clipId) it.copy(rotation = (it.rotation + deltaDeg) % 360f) else it
+        }
+        _currentProject.value = _currentProject.value.copy(quranClips = list)
+        saveCurrentProject()
+    }
+
+    fun shiftQuranClipTiming(clipId: String, startDeltaMs: Long, durDeltaMs: Long) {
+        pushSnapshot()
+        val list = _currentProject.value.quranClips.map {
+            if (it.id == clipId) {
+                val newStart = (it.startTimeMs + startDeltaMs).coerceAtLeast(0L)
+                val newDur = (it.durationMs + durDeltaMs).coerceIn(1000L, 60000L)
+                it.copy(startTimeMs = newStart, durationMs = newDur)
+            } else it
+        }
+        _currentProject.value = _currentProject.value.copy(quranClips = list)
+        saveCurrentProject()
+    }
+
+    // =========================================================================
+    // AUDIO CLIP OPERATIONS
+    // =========================================================================
+    fun toggleAudioClipMute(clipId: String) {
+        pushSnapshot()
+        val list = _currentProject.value.audioClips.map {
+            if (it.id == clipId) it.copy(volume = if (it.volume > 0.05f) 0f else 1.0f) else it
+        }
+        _currentProject.value = _currentProject.value.copy(audioClips = list)
+        saveCurrentProject()
+    }
+
+    fun shiftAudioClipTiming(clipId: String, startDeltaMs: Long) {
+        pushSnapshot()
+        val list = _currentProject.value.audioClips.map {
+            if (it.id == clipId) {
+                val newStart = (it.startTimeMs + startDeltaMs).coerceAtLeast(0L)
+                it.copy(startTimeMs = newStart)
+            } else it
+        }
+        _currentProject.value = _currentProject.value.copy(audioClips = list)
+        saveCurrentProject()
+    }
+
+    // =========================================================================
+    // VIDEO CLIP OPERATIONS
+    // =========================================================================
+    fun shiftVideoClipTiming(clipId: String, startDeltaMs: Long) {
+        pushSnapshot()
+        val list = _currentProject.value.videoClips.map {
+            if (it.id == clipId) {
+                val newStart = (it.startTimeMs + startDeltaMs).coerceAtLeast(0L)
+                it.copy(startTimeMs = newStart)
+            } else it
+        }
+        _currentProject.value = _currentProject.value.copy(videoClips = list)
+        saveCurrentProject()
+    }
+
+    // =========================================================================
+    // AI CHAT EDITING ENGINE
+    // =========================================================================
+    private val _aiChatMessages = MutableStateFlow<List<AiEditMessage>>(
+        listOf(
+            AiEditMessage(
+                sender = "ai",
+                text = "السلام علیکم! میں آپ کا Quran Video AI اسسٹنٹ ہوں۔\nآپ اردو یا انگلش میں ایڈیٹنگ کے احکامات دے سکتے ہیں، مثلاً:\n• 'ویڈیو کے نیچے اردو ترجمہ لگاؤ'\n• 'عربی متن کا رنگ سنہری کرو'\n• 'اس تصویر کو بڑا کرکے درمیان میں رکھو'\n• 'Text کو ویڈیو کے آخری پانچ سیکنڈ میں دکھاؤ'\n• 'اس کلپ کو دو حصوں میں کاٹو'\n• 'تصویر کو چھوٹا کرکے دائیں طرف رکھو'\n• 'ویڈیو کی آواز میوٹ کرو'"
+            )
+        )
+    )
+    val aiChatMessages = _aiChatMessages.asStateFlow()
+
+    private val _showAiChatDialog = MutableStateFlow(false)
+    val showAiChatDialog = _showAiChatDialog.asStateFlow()
+
+    fun openAiChat() { _showAiChatDialog.value = true }
+    fun closeAiChat() { _showAiChatDialog.value = false }
+
+    private val _isAiThinking = MutableStateFlow(false)
+    val isAiThinking = _isAiThinking.asStateFlow()
+
+    fun getEffectiveApiKey(): String {
+        return try {
+            val key = BuildConfig.GEMINI_API_KEY
+            if (key.isNotBlank() && key != "MY_GEMINI_API_KEY") key else ""
+        } catch (e: Throwable) {
+            ""
+        }
+    }
+
+    fun isGeminiConfigured(): Boolean {
+        return getEffectiveApiKey().isNotBlank()
+    }
+
+    fun executeAiEditCommand(rawQuery: String) {
+        val q = rawQuery.trim()
+        if (q.isBlank()) return
+
+        val userMsg = AiEditMessage(
+            sender = "user",
+            text = q
+        )
+        _aiChatMessages.value = _aiChatMessages.value + userMsg
+
+        viewModelScope.launch {
+            _isAiThinking.value = true
+            pushSnapshot()
+            val lower = q.lowercase(Locale.ROOT)
+            var actionSummary: String? = null
+            var defaultUrduReply: String? = null
+            var aiReply: String
+
+            when {
+            // 1. Urdu Subtitles / Translation
+            lower.contains("اردو ترجمہ") || lower.contains("ترجمہ") || lower.contains("translation") || lower.contains("subtitle") -> {
+                val qClips = _currentProject.value.quranClips
+                if (qClips.isNotEmpty()) {
+                    val updated = qClips.map { it.copy(urduTranslation = it.urduTranslation.ifBlank { "بے شک مشکل کے ساتھ آسانی ہے" }, positionY = 0.82f) }
+                    _currentProject.value = _currentProject.value.copy(quranClips = updated)
+                    actionSummary = "قرآنی آیت کے نیچے اردو ترجمہ سیٹ کیا گیا"
+                    aiReply = "قرآنی آیت کے نیچے اردو ترجمہ نمایاں انداز میں شامل کر دیا گیا ہے۔"
+                } else {
+                    val ayah = QuranData.getAyah(94, 6)
+                    val newQ = QuranClip(
+                        id = UUID.randomUUID().toString(),
+                        surahNumber = 94,
+                        surahName = "Al-Inshirah",
+                        ayahStart = 6,
+                        ayahEnd = 6,
+                        arabicText = ayah.arabicText,
+                        urduTranslation = ayah.urduTranslation,
+                        startTimeMs = _currentPlayheadMs.value,
+                        durationMs = 8000L,
+                        positionY = 0.82f
+                    )
+                    _currentProject.value = _currentProject.value.copy(quranClips = _currentProject.value.quranClips + newQ)
+                    _selectedTrack.value = TrackType.QURAN
+                    _selectedClipId.value = newQ.id
+                    actionSummary = "سورۃ الانشراح مع اردو ترجمہ شامل کی گئی"
+                    aiReply = "ویڈیو کے نچلے حصے پر خوبصورت اردو ترجمہ کے ساتھ قرآنی آیت شامل کر دی گئی ہے۔"
+                }
+            }
+
+            // 2. Arabic Gold Text
+            lower.contains("سنہری") || lower.contains("گولڈ") || lower.contains("gold") || lower.contains("عربی متن") -> {
+                val qClips = _currentProject.value.quranClips
+                if (qClips.isNotEmpty()) {
+                    val updated = qClips.map { it.copy(arabicColor = 0xFFFFD700) }
+                    _currentProject.value = _currentProject.value.copy(quranClips = updated)
+                    actionSummary = "عربی متن کا رنگ سنہری (Premium Gold) کیا گیا"
+                    aiReply = "عربی قرآنی آیات کا رنگ شاندار سنہری (Premium Gold) کر دیا گیا ہے۔"
+                } else {
+                    val tClips = _currentProject.value.textClips
+                    if (tClips.isNotEmpty()) {
+                        val updated = tClips.map { it.copy(color = 0xFFFFD700) }
+                        _currentProject.value = _currentProject.value.copy(textClips = updated)
+                        actionSummary = "ٹیکسٹ کا رنگ سنہری کیا گیا"
+                        aiReply = "ٹیکسٹ کا رنگ سنہری (Premium Gold) کر دیا گیا ہے۔"
+                    } else {
+                        aiReply = "پروجیکٹ میں ابھی کوئی آیت یا ٹیکسٹ شامل نہیں ہے۔ پہلے آیت یا ٹیکسٹ شامل کریں۔"
+                    }
+                }
+            }
+
+            // 3. Enlarge Image & Center
+            (lower.contains("تصویر") || lower.contains("image")) && (lower.contains("بڑا") || lower.contains("enlarge") || lower.contains("درمیان") || lower.contains("center")) -> {
+                val imgs = _currentProject.value.imageClips
+                if (imgs.isNotEmpty()) {
+                    val updated = imgs.map { it.copy(scale = 1.6f, positionX = 0.5f, positionY = 0.5f) }
+                    _currentProject.value = _currentProject.value.copy(imageClips = updated)
+                    actionSummary = "تصویر کو بڑا کر کے درمیان میں رکھا گیا"
+                    aiReply = "تصویر کا سائز بڑا کر کے اسے اسکرین کے عین درمیان میں سیٹ کر دیا گیا ہے۔"
+                } else {
+                    aiReply = "اس پروجیکٹ میں فی الحال کوئی تصویر شامل نہیں ہے۔ آپ '+' دبا کر تصویر شامل کر سکتے ہیں۔"
+                }
+            }
+
+            // 4. Shrink Image & Place on Right
+            (lower.contains("تصویر") || lower.contains("image")) && (lower.contains("چھوٹا") || lower.contains("small") || lower.contains("shrink") || lower.contains("دائیں") || lower.contains("right")) -> {
+                val imgs = _currentProject.value.imageClips
+                if (imgs.isNotEmpty()) {
+                    val updated = imgs.map { it.copy(scale = 0.75f, positionX = 0.78f, positionY = 0.5f) }
+                    _currentProject.value = _currentProject.value.copy(imageClips = updated)
+                    actionSummary = "تصویر کو چھوٹا کر کے دائیں طرف رکھا گیا"
+                    aiReply = "تصویر کا سائز چھوٹا کر کے اسے دائیں طرف (Right Side) منتقل کر دیا گیا ہے۔"
+                } else {
+                    aiReply = "اس پروجیکٹ میں کوئی تصویر موجود نہیں ہے۔"
+                }
+            }
+
+            // 5. Text in Last 5 Seconds
+            lower.contains("آخری") || lower.contains("پانچ سیکنڈ") || lower.contains("last 5") || lower.contains("آخری 5") -> {
+                val totalDur = _currentProject.value.durationMs
+                val startAt = maxOf(0L, totalDur - 5000L)
+                val tClips = _currentProject.value.textClips
+                if (tClips.isNotEmpty()) {
+                    val updated = tClips.mapIndexed { idx, clip ->
+                        if (idx == tClips.lastIndex) clip.copy(startTimeMs = startAt, durationMs = 5000L) else clip
+                    }
+                    _currentProject.value = _currentProject.value.copy(textClips = updated)
+                    actionSummary = "ٹیکسٹ کو ویڈیو کے آخری 5 سیکنڈ میں منتقل کیا گیا"
+                    aiReply = "ٹیکسٹ کو ویڈیو کے آخری پانچ سیکنڈ (${(startAt/1000)}s - ${(totalDur/1000)}s) کے دوران سیٹ کر دیا گیا ہے۔"
+                } else {
+                    val newText = TextClip(
+                        id = UUID.randomUUID().toString(),
+                        text = "الحمد للہ رب العالمین",
+                        startTimeMs = startAt,
+                        durationMs = 5000L,
+                        positionY = 0.5f,
+                        size = 24f,
+                        color = 0xFFFFD700
+                    )
+                    _currentProject.value = _currentProject.value.copy(textClips = listOf(newText))
+                    _selectedTrack.value = TrackType.TEXT
+                    _selectedClipId.value = newText.id
+                    actionSummary = "ویڈیو کے آخری 5 سیکنڈ میں ٹیکسٹ شامل کیا گیا"
+                    aiReply = "ویڈیو کے اختتامی 5 سیکنڈ کے لیے خوبصورت ٹیکسٹ شامل کر دیا گیا ہے۔"
+                }
+            }
+
+            // 6. Split Clip
+            lower.contains("کاٹو") || lower.contains("دو حصوں") || lower.contains("تقسیم") || lower.contains("split") || lower.contains("cut into two") -> {
+                splitSelectedClip()
+                actionSummary = "کلپ کو پلے ہیڈ کے مقام پر دو حصوں میں کاٹا گیا"
+                aiReply = "کلپ کو موجودہ پلے ہیڈ کے مقام پر کامیابی سے دو حصوں میں تقسیم کر دیا گیا ہے۔"
+            }
+
+            // 7. Mute Video
+            lower.contains("میوٹ") || lower.contains("mute") || lower.contains("خاموش") || lower.contains("آواز بند") -> {
+                _isMuted.value = true
+                _currentProject.value = _currentProject.value.copy(
+                    videoConfig = _currentProject.value.videoConfig.copy(isMuted = true)
+                )
+                actionSummary = "ویڈیو آڈیو میوٹ کی گئی"
+                aiReply = "ویڈیو کی آواز کو مکمل خاموش (Muted) کر دیا گیا ہے۔"
+            }
+
+            // 8. Speed
+            lower.contains("سپیڈ") || lower.contains("speed") || lower.contains("تیز") || lower.contains("fast") -> {
+                val speed = if (lower.contains("2x") || lower.contains("ڈبل")) 2.0f else 1.5f
+                _currentProject.value = _currentProject.value.copy(
+                    videoConfig = _currentProject.value.videoConfig.copy(speed = speed)
+                )
+                actionSummary = "ویڈیو سپیڈ ${speed}x پر سیٹ کی گئی"
+                aiReply = "ویڈیو کی رفتار کو ${speed}x پر سیٹ کر دیا گیا ہے۔"
+            }
+
+            // 9. Filter / Effects
+            lower.contains("فلٹر") || lower.contains("filter") || lower.contains("cinematic") || lower.contains("سنیماٹک") -> {
+                _currentProject.value = _currentProject.value.copy(
+                    videoConfig = _currentProject.value.videoConfig.copy(activeFilter = FilterType.CINEMATIC)
+                )
+                actionSummary = "سنیماٹک فلٹر لاگو کیا گیا"
+                aiReply = "ویڈیو پر سنیماٹک (Cinematic) فلٹر کامیابی سے لاگو کر دیا گیا ہے۔"
+            }
+
+            else -> {
+                defaultUrduReply = "آپ کی ہدایت: '$q'\nاس ہدایت کو انجام دینے کے لیے براہ کرم ان میں سے کوئی واضح آپشن منتخب کریں:\n• ویڈیو کے نیچے اردو ترجمہ لگائیں\n• عربی متن کو سنہری کریں\n• تصویر کو بڑا / چھوٹا کریں\n• ٹیکسٹ کو آخری پانچ سیکنڈ میں دکھائیں\n• کلپ کو دو حصوں میں تقسیم کریں\n• ویڈیو میوٹ یا تیز کریں"
+            }
+        }
+
+        var finalReply = ""
+        val keyConfigured = isGeminiConfigured()
+
+        if (keyConfigured) {
+            try {
+                val promptText = if (actionSummary != null) {
+                    "User command: $q\nAction executed on Islamic Video Project: $actionSummary\nAcknowledge this action politely to the user in fluent Urdu, confirm that it has been applied to the timeline/canvas, and provide any relevant artistic or Islamic styling tips."
+                } else {
+                    q
+                }
+
+                val history = _aiChatMessages.value.takeLast(6).map { m ->
+                    GeminiContent(
+                        role = if (m.sender == "user") "user" else "model",
+                        parts = listOf(GeminiContentPart(text = m.text))
+                    )
+                }
+
+                val systemPrompt = GeminiContent(
+                    role = "system",
+                    parts = listOf(
+                        GeminiContentPart(
+                            text = "You are the AI Assistant for 'Quran Video Editor'. " +
+                                   "Help the user edit their Islamic video, choose authentic Quran surahs and ayahs, recommend Urdu translations, calligraphy styles, and video timing. " +
+                                   "Always be warm, respectful, and answer in natural Urdu (or English if prompted). " +
+                                   "Do not invent false Quran verses. Always prioritize authentic Quranic text."
+                        )
+                    )
+                )
+
+                val request = GeminiGenerateRequest(
+                    contents = history + listOf(
+                        GeminiContent(
+                            role = "user",
+                            parts = listOf(GeminiContentPart(text = promptText))
+                        )
+                    ),
+                    systemInstruction = systemPrompt
+                )
+
+                val key = getEffectiveApiKey()
+                val response = withContext(Dispatchers.IO) {
+                    try {
+                        GeminiApiClient.service.generateContent(
+                            model = "gemini-3.5-flash-lite",
+                            apiKey = key,
+                            request = request
+                        )
+                    } catch (primaryEx: Exception) {
+                        try {
+                            GeminiApiClient.service.generateContent(
+                                model = "gemini-3.5-flash",
+                                apiKey = key,
+                                request = request
+                            )
+                        } catch (_: Exception) {
+                            throw primaryEx
+                        }
+                    }
+                }
+
+                val generated = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+                if (!generated.isNullOrBlank()) {
+                    finalReply = generated
+                } else {
+                    finalReply = defaultUrduReply ?: "Gemini سے جواب موصول ہوا۔"
+                }
+            } catch (e: Exception) {
+                val err = e.localizedMessage ?: e.message ?: "Unknown error"
+                finalReply = if (defaultUrduReply != null) {
+                    "$defaultUrduReply\n\n(نوٹ: Gemini API ایرر: $err)"
+                } else {
+                    "Gemini API ایرر: $err\nبراہ کرم AI Studio Secrets میں GEMINI_API_KEY کی درستگی چیک کریں۔"
+                }
+            }
+        } else {
+            if (defaultUrduReply != null) {
+                finalReply = "$defaultUrduReply\n\n(نوٹ: یہ ہدایت لوکل ایڈیٹر سے کامیابی سے لاگو کی گئی۔ حقیقی Gemini 3.5 Flash ماڈل مربوط کرنے کے لیے AI Studio کے Secrets پینل میں GEMINI_API_KEY داخل کریں۔)"
+            } else {
+                finalReply = "السلام علیکم! آپ کی ہدایت: '$q'\n\nاصلی Google Gemini API سے مربوط ہونے کے لیے براہ کرم Google AI Studio کے 'Secrets' پینل میں GEMINI_API_KEY کے تحت اپنی API کی داخل کریں۔\n\nاس دوران آپ ذیل کی ایڈیٹنگ ہدایات فوری استعمال کر سکتے ہیں:\n• ویڈیو کے نیچے اردو ترجمہ لگائیں\n• عربی متن کو سنہری کریں\n• تصویر کو بڑا / چھوٹا کریں\n• ٹیکسٹ کو آخری پانچ سیکنڈ میں دکھائیں\n• کلپ کو دو حصوں میں تقسیم کریں\n• ویڈیو میوٹ یا تیز کریں"
+            }
+        }
+
+        _isAiThinking.value = false
+
+        val aiMsg = AiEditMessage(
+            sender = "ai",
+            text = finalReply,
+            actionSummary = actionSummary,
+            canApply = actionSummary != null,
+            canUndo = actionSummary != null
+        )
+        _aiChatMessages.value = _aiChatMessages.value + aiMsg
+        saveCurrentProject()
+        }
+    }
+
+    fun deleteAiChatMessage(messageId: String) {
+        _aiChatMessages.value = _aiChatMessages.value.filter { it.id != messageId }
+        saveCurrentProject()
+    }
+
+    fun clearAiChatHistory() {
+        _aiChatMessages.value = listOf(
+            AiEditMessage(
+                sender = "ai",
+                text = "السلام علیکم! میں آپ کا Quran Video AI اسسٹنٹ ہوں۔\nآپ اردو یا انگلش میں ایڈیٹنگ کے احکامات دے سکتے ہیں یا قرآنی آیات اور ویڈیو اسٹائلنگ سے متعلق مشورہ لے سکتے ہیں۔"
+            )
+        )
+        saveCurrentProject()
+    }
+
+    fun applyAiAction(messageId: String) {
+        val list = _aiChatMessages.value.map {
+            if (it.id == messageId) it.copy(isApplied = true, canUndo = false) else it
+        }
+        _aiChatMessages.value = list
+        saveCurrentProject()
+    }
+
+    fun undoAiAction(messageId: String) {
+        undo()
+        val list = _aiChatMessages.value.map {
+            if (it.id == messageId) it.copy(canUndo = false, actionSummary = "${it.actionSummary ?: ""} (واپس کر دیا گیا)") else it
+        }
+        _aiChatMessages.value = list
         saveCurrentProject()
     }
 

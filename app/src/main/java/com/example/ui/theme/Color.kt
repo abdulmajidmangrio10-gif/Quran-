@@ -24,10 +24,24 @@ val AccentBlue = NeonBlue
 val AccentTeal = Color(0xFF14B8A6)
 val AccentRed = Color(0xFFEF4444)
 
+// Islamic Dark Palette - Charcoal Black, Emerald Green, Premium Gold, Text White
+val IslamicCharcoal = Color(0xFF0F0F12)
+val EmeraldGreen = Color(0xFF0D5C3A)
+val EmeraldGreenLight = Color(0xFF10B981)
+val PremiumGold = Color(0xFFD4AF37)
+val PremiumGoldLight = Color(0xFFFFD700)
+
 // Quran Gold Accents
 val QuranGold = Color(0xFFE6B74A)
 val QuranGoldLight = Color(0xFFF7D57F)
 val QuranGoldDark = Color(0xFFB58925)
+
+val IslamicGoldGradient = Brush.linearGradient(
+    colors = listOf(PremiumGoldLight, PremiumGold, Color(0xFFB58925))
+)
+val IslamicEmeraldGradient = Brush.linearGradient(
+    colors = listOf(EmeraldGreenLight, EmeraldGreen)
+)
 
 // Gradients
 val ProPurpleGradient = Brush.linearGradient(

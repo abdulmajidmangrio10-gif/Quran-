@@ -177,7 +177,8 @@ data class ImageClip(
     val positionX: Float = 0.5f,
     val positionY: Float = 0.5f,
     val scale: Float = 1.0f,
-    val opacity: Float = 1.0f
+    val opacity: Float = 1.0f,
+    val rotation: Float = 0f
 )
 
 data class StickerClip(
@@ -228,4 +229,15 @@ data class AppSettings(
     val defaultFps: Int = 30,
     val defaultQuality: String = "High",
     val watermarkEnabled: Boolean = false
+)
+
+data class AiEditMessage(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val sender: String, // "user" or "ai"
+    val text: String,
+    val actionSummary: String? = null,
+    val canApply: Boolean = false,
+    val canUndo: Boolean = false,
+    val isApplied: Boolean = false,
+    val timestamp: Long = System.currentTimeMillis()
 )
